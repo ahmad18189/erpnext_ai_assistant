@@ -22,6 +22,7 @@ LABELS = {
 	"list_installed_apps": ("التطبيقات المثبتة", "Installed apps"),
 	"lookup_field": ("مطابقة الحقل", "Match field"),
 	"search_knowledge": ("استرجاع المعرفة", "Search knowledge"),
+	"search_manual": ("دليل ERPNext", "ERPNext manual"),
 	"propose_write": ("تجهيز طلب", "Prepare request"),
 }
 
@@ -120,6 +121,20 @@ TOOL_SPECS = [
 			"parameters": {
 				"type": "object",
 				"properties": {"query": {"type": "string"}},
+				"required": ["query"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "search_manual",
+			"description": "Fetch how-to instructions from the official ERPNext user manual (docs.frappe.io). Use when the user asks how to do something in ERPNext, needs steps, or wants documentation. Not for live record counts.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"query": {"type": "string", "description": "Topic in English or Arabic, e.g. sales invoice, إنشاء فاتورة مبيعات"},
+				},
 				"required": ["query"],
 			},
 		},
@@ -265,6 +280,10 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 					for hit in hits
 				]
 			}
+		if name == "search_manual":
+			from erpnext_ai_assistant.services.manual_docs import search_manual
+
+			return {"passages": search_manual(args.get("query") or "", limit=3)}
 		if name == "propose_write":
 			return _propose(args, chat_id, lang)
 		return {"error": f"Unknown tool {name}"}
@@ -348,6 +367,9 @@ def _detail(name: str, result: dict, lang: str) -> str:
 		return (result.get("message_en") or result.get("summary") or "")[:180]
 	if name == "search_knowledge":
 		return f"{len(result.get('passages') or [])} passages"
+	if name == "search_manual":
+		titles = [p.get("title") or "" for p in (result.get("passages") or [])[:3]]
+		return ", ".join(t for t in titles if t) or f"{len(result.get('passages') or [])} pages"
 	if lang == "ar" and name == "lookup_field":
 		return f"{len(result.get('hits') or [])} حقول"
 	return json.dumps(result, ensure_ascii=False, default=str)[:180]
@@ -429,6 +451,7 @@ def run_tool_loop(
 		"If the DocType is unclear, call list_doctypes with words from the user message, "
 		"then use only a name from that cached non-child list. Never invent a DocType. "
 		"For quantity questions (كم / عدد / how many / count) call count_records after you know the DocType. "
+		"For how-to / steps / manual / documentation questions, call search_manual and cite the returned url. "
 		"Use describe_doctype for the DocType the user named, not a similar one. "
 		"propose_write does not save. If it returns missing fields, ask for those labels and stop. "
 		"On a follow-up, pass every value the user already gave, plus the new one. "

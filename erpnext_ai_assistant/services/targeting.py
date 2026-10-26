@@ -52,6 +52,22 @@ _SYNONYMS = {
 _CREATE_WORDS = ("اعمل", "انشئ", "انشاء", "اضف", "اضيف", "سوي", "سو", "عمل", "create", "add", "make")
 _QUERY_WORDS = ("افتح", "اعرض", "قائمه", "ابحث", "list", "show", "open", "find")
 _COUNT_WORDS = ("كم", "عدد", "how many", "count", "عددها", "كم عدد")
+_HOWTO_WORDS = (
+	"كيف",
+	"طريقه",
+	"طريقة",
+	"خطوات",
+	"دليل",
+	"شرح",
+	"how to",
+	"how do i",
+	"how can i",
+	"manual",
+	"documentation",
+	"docs",
+	"instructions",
+	"steps to",
+)
 _LIST_FIELDS = {
 	"ToDo": ["name", "description", "date", "status"],
 	"Event": ["name", "subject", "starts_on", "event_category"],
@@ -97,6 +113,9 @@ def match_doctype(text: str | None) -> str | None:
 
 def interpret(text: str | None) -> dict | None:
 	"""Return {doctype, action, values} only when both are clear. Else None → AI."""
+	# How-to / manual questions go to the model + search_manual, not create/count shortcuts.
+	if _is_howto(text or ""):
+		return None
 	doctype = match_doctype(text)
 	if not doctype:
 		return None
@@ -104,6 +123,15 @@ def interpret(text: str | None) -> dict | None:
 	if not action:
 		return None
 	return {"doctype": doctype, "action": action, "values": _values(doctype, text or "")}
+
+
+def _is_howto(text: str) -> bool:
+	norm = normalize_arabic(text)
+	if not norm:
+		return False
+	if any(_has(norm, word) for word in _HOWTO_WORDS):
+		return True
+	return bool(re.search(r"\bhow\s+(do|can|to)\b|\bsteps?\b|\bmanual\b|\bdocs?\b", norm))
 
 
 def canonical_doctype(name: str | None, user_text: str | None = None) -> str:

@@ -20,7 +20,7 @@ The assistant is a Frappe app. It is not part of one CRM or HR product.
 5. Work-scope gate. No model. A route under Desk or any installed app route counts as work. Follow-ups reuse recent user text.
 6. Load confirmed user-scope ERP AI Memory and the active persona.
 7. DocType targeting (`services/targeting.py`): create, count, or list when the wording names a DocType. Count uses `count_records` with no model call.
-8. Tool loop (`services/tools/agent.py`): describe, query, count, list apps, lookup field, search knowledge, propose write. Retrieved text is quoted data in `conversation.py`, not a new system policy. A live quantity or list question with no tool call returns a fixed not-verified sentence.
+8. Tool loop (`services/tools/agent.py`): describe, query, count, list DocTypes, list apps, lookup field, search knowledge, search ERPNext manual (`docs.frappe.io`), propose write. How-to questions skip DocType shortcuts and use `search_manual`. Retrieved text is quoted data in `conversation.py`, not a new system policy. A live quantity or list question with no tool call returns a fixed not-verified sentence.
 9. When the model is off or the key is missing, the regex detectors run instead, then skills and role-filtered RAG, then one completion.
 10. Per-user daily call cap and turn deadline stop further provider calls. Each provider call writes an ERP AI Audit Log row with DocType names, field names, image count, and request byte size only.
 
