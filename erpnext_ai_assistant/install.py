@@ -25,6 +25,13 @@ def after_migrate():
 	_seed_settings_children()
 	_seed_desktop_icon()
 	try:
+		from erpnext_ai_assistant.services.doctype_catalog import clear_doctype_catalog, get_doctype_catalog
+
+		clear_doctype_catalog()
+		get_doctype_catalog(force=True)
+	except Exception:
+		frappe.log_error(title="ERP AI DocType catalog rebuild on migrate")
+	try:
 		from erpnext_ai_assistant.services.rdf.graph import rebuild_rdf_graph
 
 		rebuild_rdf_graph()

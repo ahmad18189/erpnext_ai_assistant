@@ -63,6 +63,20 @@
    "default": 2048
   },
   {
+   "fieldname": "max_calls_per_user_day",
+   "fieldtype": "Int",
+   "label": "Max Calls Per User Per Day",
+   "default": 100,
+   "description": "Provider chat completions per user per calendar day. At the cap the assistant returns a fixed limit sentence."
+  },
+  {
+   "fieldname": "turn_deadline_seconds",
+   "fieldtype": "Int",
+   "label": "Turn Deadline Seconds",
+   "default": 90,
+   "description": "Stop starting further provider calls in a turn after this many seconds."
+  },
+  {
    "fieldname": "tab_persona",
    "fieldtype": "Tab Break",
    "label": "Persona"

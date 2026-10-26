@@ -43,6 +43,13 @@
    "in_standard_filter": 1
   },
   {
+   "fieldname": "source_key",
+   "fieldtype": "Data",
+   "label": "Source Key",
+   "unique": 1,
+   "description": "Stable id such as skill:NAME. Retrieval updates and deletes use this, not the title."
+  },
+  {
    "fieldname": "source_roles",
    "fieldtype": "Small Text",
    "label": "Source Roles",

@@ -69,13 +69,21 @@ def describe_doctype(doctype: str) -> dict:
 	"""Mandatory fields and child tables for a DocType the session user may create."""
 	if doctype in DENIED_DOCTYPES or not frappe.db.exists("DocType", doctype):
 		frappe.throw(f"DocType is not available for assistant writes: {doctype}", frappe.PermissionError)
+	if not (frappe.has_permission(doctype, "read") or frappe.has_permission(doctype, "create")):
+		frappe.throw(f"No access to {doctype}", frappe.PermissionError)
 	meta = frappe.get_meta(doctype)
+	permitted = set(meta.get_permitted_fieldnames(permission_type="read") or [])
+	# Create path still needs required fields the user can write.
+	if frappe.has_permission(doctype, "create"):
+		permitted.update(meta.get_permitted_fieldnames(permission_type="write") or [])
 	fields = []
 	children = []
 	for df in meta.fields:
 		if not df.fieldname or df.fieldtype in LAYOUT:
 			continue
 		if df.fieldtype == "Table":
+			if permitted and df.fieldname not in permitted and int(df.permlevel or 0) > 0:
+				continue
 			child_meta = frappe.get_meta(df.options) if df.options else None
 			child_fields = []
 			if child_meta:
@@ -95,6 +103,8 @@ def describe_doctype(doctype: str) -> dict:
 					"required_columns": child_fields,
 				}
 			)
+			continue
+		if permitted and df.fieldname not in permitted:
 			continue
 		fields.append(
 			{

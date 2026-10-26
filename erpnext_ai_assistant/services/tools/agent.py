@@ -17,11 +17,16 @@ MAX_ROUNDS = 4
 LABELS = {
 	"describe_doctype": ("مخطط نوع المستند", "Read DocType"),
 	"query_records": ("استعلام السجلات", "Query records"),
+	"count_records": ("عدد السجلات", "Count records"),
+	"list_doctypes": ("أنواع المستندات", "List DocTypes"),
 	"list_installed_apps": ("التطبيقات المثبتة", "Installed apps"),
 	"lookup_field": ("مطابقة الحقل", "Match field"),
 	"search_knowledge": ("استرجاع المعرفة", "Search knowledge"),
 	"propose_write": ("تجهيز طلب", "Prepare request"),
 }
+
+NOT_VERIFIED_AR = "لم أتحقق من السجلات، لذلك لن أذكر رقماً."
+NOT_VERIFIED_EN = "I did not check the records, so I will not state a number."
 
 TOOL_SPECS = [
 	{
@@ -40,7 +45,7 @@ TOOL_SPECS = [
 		"type": "function",
 		"function": {
 			"name": "query_records",
-			"description": "List records the current user can read. Filters are a JSON object of field to value.",
+			"description": "List records the current user can read. Filters are a JSON object of field to value. returned_count is a page, not the total.",
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -50,6 +55,34 @@ TOOL_SPECS = [
 					"limit": {"type": "integer"},
 				},
 				"required": ["doctype"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "count_records",
+			"description": "Return the permission-scoped total number of records for a DocType. Use this for quantity questions (how many / كم / عدد).",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"doctype": {"type": "string"},
+					"filters": {"type": "object"},
+				},
+				"required": ["doctype"],
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "list_doctypes",
+			"description": "Search the cached list of non-child DocTypes on this site (name + Arabic labels). Call this when you are unsure which DocType the user meant. Never invent a DocType name.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"query": {"type": "string", "description": "Arabic or English words from the user message"},
+				},
 			},
 		},
 	},
@@ -173,7 +206,7 @@ def _propose(args: dict, chat_id: str | None, lang: str) -> dict:
 
 def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: str | None = None) -> dict:
 	try:
-		if name in ("describe_doctype", "query_records", "propose_write"):
+		if name in ("describe_doctype", "query_records", "count_records", "propose_write"):
 			from erpnext_ai_assistant.services.targeting import canonical_doctype
 
 			args = dict(args or {})
@@ -181,19 +214,38 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 		if name == "describe_doctype":
 			return _compact_schema(args.get("doctype") or "")
 		if name == "query_records":
-			filters = args.get("filters") or {}
-			if isinstance(filters, str):
-				try:
-					filters = json.loads(filters)
-				except Exception:
-					filters = {}
+			filters = _parse_filters(args.get("filters"))
+			filters = _resolve_filter_keys(args.get("doctype") or "", filters, lang)
+			if filters.get("_error"):
+				return {"error": filters["_error"]}
 			rows = tools.tool_erp_query(
 				args.get("doctype") or "",
 				filters=filters if isinstance(filters, dict) else {},
 				fields=args.get("fields") or ["name"],
 				limit=min(int(args.get("limit") or 20), 50),
 			)
-			return {"doctype": args.get("doctype"), "count": len(rows), "rows": rows[:20]}
+			page = rows[:20]
+			capped = len(rows) >= min(int(args.get("limit") or 20), 50)
+			return {
+				"doctype": args.get("doctype"),
+				"returned_count": len(page),
+				"capped": capped,
+				"note": "returned_count is this page, not the total number of records.",
+				"rows": page,
+			}
+		if name == "count_records":
+			filters = _parse_filters(args.get("filters"))
+			filters = _resolve_filter_keys(args.get("doctype") or "", filters, lang)
+			if filters.get("_error"):
+				return {"error": filters["_error"]}
+			return tools.tool_erp_count(
+				args.get("doctype") or "",
+				filters=filters if isinstance(filters, dict) else {},
+			)
+		if name == "list_doctypes":
+			from erpnext_ai_assistant.services.doctype_catalog import search_catalog
+
+			return {"doctypes": search_catalog(args.get("query"), limit=20)}
 		if name == "list_installed_apps":
 			return {"apps": tools.tool_list_installed_apps(args.get("query"))}
 		if name == "lookup_field":
@@ -202,12 +254,76 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 			from erpnext_ai_assistant.services.rag import service as rag
 
 			hits = rag.retrieve(args.get("query") or "", limit=4)
-			return {"passages": [{"content": (hit.get("content") or "")[:500]} for hit in hits]}
+			return {
+				"passages": [
+					{
+						"source": hit.get("document_title") or hit.get("document") or "",
+						"source_key": hit.get("source_key") or "",
+						"chunk_index": hit.get("chunk_index"),
+						"content": (hit.get("content") or "")[:500],
+					}
+					for hit in hits
+				]
+			}
 		if name == "propose_write":
 			return _propose(args, chat_id, lang)
 		return {"error": f"Unknown tool {name}"}
 	except Exception as exc:
 		return {"error": str(exc)}
+
+
+def _parse_filters(raw) -> dict:
+	filters = raw or {}
+	if isinstance(filters, str):
+		try:
+			filters = json.loads(filters)
+		except Exception:
+			filters = {}
+	return filters if isinstance(filters, dict) else {}
+
+
+def _resolve_filter_keys(doctype: str, filters: dict, lang: str) -> dict:
+	"""Map label-like filter keys to fieldnames the session may read. Iteration 3."""
+	if not filters or not doctype:
+		return filters
+	try:
+		meta = frappe.get_meta(doctype)
+	except Exception:
+		return filters
+	known = {df.fieldname for df in meta.fields if df.fieldname}
+	known.update({"name", "owner", "creation", "modified", "docstatus", "idx"})
+	permitted = set(meta.get_permitted_fieldnames(permission_type="read") or [])
+	resolved = {}
+	for key, value in filters.items():
+		if key in known:
+			if permitted and key not in permitted and key not in ("name", "owner", "creation", "modified", "docstatus", "idx"):
+				msg = (
+					f"لا صلاحية لقراءة الحقل {key}."
+					if lang == "ar"
+					else f"No permission to read field {key}."
+				)
+				return {"_error": msg}
+			resolved[key] = value
+			continue
+		hits = tools.tool_rdf_lookup(str(key), doctype=doctype)
+		readable = [h for h in hits if h.get("fieldname") in permitted or not permitted]
+		if len(readable) == 1:
+			resolved[readable[0]["fieldname"]] = value
+			continue
+		if hits and not readable:
+			msg = (
+				f"الحقل «{key}» فوق مستوى صلاحيتك."
+				if lang == "ar"
+				else f"Field «{key}» is above your permission level."
+			)
+			return {"_error": msg}
+		msg = (
+			f"لم أجد حقلاً باسم «{key}». أعطِ تسمية الحقل الصحيحة."
+			if lang == "ar"
+			else f"No field matched «{key}». Provide the correct field label."
+		)
+		return {"_error": msg}
+	return resolved
 
 
 def _detail(name: str, result: dict, lang: str) -> str:
@@ -217,7 +333,13 @@ def _detail(name: str, result: dict, lang: str) -> str:
 		labels = ", ".join(field["label"] or field["fieldname"] for field in result.get("required") or [])
 		return labels[:180] or result.get("doctype") or ""
 	if name == "query_records":
-		return f"{result.get('count', 0)} rows"
+		shown = result.get("returned_count", result.get("count", 0))
+		return f"{shown} rows" + (" (page, not a total)" if result.get("capped") else "")
+	if name == "count_records":
+		return f"total {result.get('total', 0)}"
+	if name == "list_doctypes":
+		names = [row.get("name") or "" for row in (result.get("doctypes") or [])[:8]]
+		return ", ".join(n for n in names if n) or "none"
 	if name == "list_installed_apps":
 		return ", ".join(row.get("app") or "" for row in (result.get("apps") or [])[:8])
 	if name == "propose_write":
@@ -232,8 +354,8 @@ def _detail(name: str, result: dict, lang: str) -> str:
 
 
 def _targeted_turn(user: str, chat_id: str | None, lang: str, step) -> dict | None:
-	"""Create or list the DocType the Arabic (or everyday) wording actually names."""
-	from erpnext_ai_assistant.services.targeting import format_query, interpret, list_fields
+	"""Create, count, or list the DocType the Arabic (or everyday) wording actually names."""
+	from erpnext_ai_assistant.services.targeting import format_count, format_query, interpret, list_fields
 
 	planned = interpret(user)
 	if not planned:
@@ -252,6 +374,24 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step) -> dict | No
 		detail = _detail("propose_write", result, lang)
 		step("tool-1", "تجهيز طلب", "Prepare request", "propose_write", "done", detail=detail, detail_ar=detail)
 		return {"answer": "", "pending": result}
+	if planned["action"] == "count":
+		step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"count {doctype}", detail_ar=f"عدد {doctype}")
+		step("tool-1", "عدد السجلات", "Count records", "count_records", "running")
+		result = dispatch(
+			"count_records",
+			{"doctype": doctype},
+			chat_id,
+			lang,
+			user_text=user,
+		)
+		detail = _detail("count_records", result, lang)
+		step("tool-1", "عدد السجلات", "Count records", "count_records", "done", detail=detail, detail_ar=detail)
+		if result.get("error"):
+			return {"answer": str(result["error"]), "pending": None}
+		return {
+			"answer": format_count(doctype, int(result.get("total") or 0), lang),
+			"pending": None,
+		}
 	step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"query {doctype}", detail_ar=f"استعلام {doctype}")
 	step("tool-1", "استعلام السجلات", "Query records", "query_records", "running")
 	result = dispatch(
@@ -265,7 +405,10 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step) -> dict | No
 	step("tool-1", "استعلام السجلات", "Query records", "query_records", "done", detail=detail, detail_ar=detail)
 	if result.get("error"):
 		return {"answer": str(result["error"]), "pending": None}
-	return {"answer": format_query(doctype, result.get("rows") or [], lang), "pending": None}
+	return {
+		"answer": format_query(doctype, result.get("rows") or [], lang, capped=bool(result.get("capped"))),
+		"pending": None,
+	}
 
 
 def run_tool_loop(
@@ -283,6 +426,9 @@ def run_tool_loop(
 
 	rules = (
 		"You direct the tools. Call a tool before you state live data or prepare a write. "
+		"If the DocType is unclear, call list_doctypes with words from the user message, "
+		"then use only a name from that cached non-child list. Never invent a DocType. "
+		"For quantity questions (كم / عدد / how many / count) call count_records after you know the DocType. "
 		"Use describe_doctype for the DocType the user named, not a similar one. "
 		"propose_write does not save. If it returns missing fields, ask for those labels and stop. "
 		"On a follow-up, pass every value the user already gave, plus the new one. "
@@ -302,10 +448,21 @@ def run_tool_loop(
 	)
 	pending = None
 	call_no = 0
+	llm.begin_turn_deadline()
 	for _round in range(MAX_ROUNDS):
-		message = llm.chat_message(messages, tools=TOOL_SPECS)
+		try:
+			message = llm.chat_message(messages, tools=TOOL_SPECS, chat_id=chat_id, lang=lang)
+		except (llm.CallLimitExceeded, llm.TurnDeadlineExceeded) as exc:
+			return {"answer": str(exc), "pending": pending}
 		tool_calls = message.get("tool_calls") or []
 		if not tool_calls:
+			from erpnext_ai_assistant.services.targeting import needs_live_check
+
+			if needs_live_check(user):
+				return {
+					"answer": NOT_VERIFIED_AR if lang == "ar" else NOT_VERIFIED_EN,
+					"pending": pending,
+				}
 			return {"answer": message.get("content") or "", "pending": pending}
 		messages.append(
 			{
@@ -342,5 +499,8 @@ def run_tool_loop(
 				break
 		if pending and pending.get("status") in ("pending", "need_input", "failed"):
 			return {"answer": "", "pending": pending}
-	final = llm.chat_message(messages, tools=None)
+	try:
+		final = llm.chat_message(messages, tools=None, chat_id=chat_id, lang=lang)
+	except (llm.CallLimitExceeded, llm.TurnDeadlineExceeded) as exc:
+		return {"answer": str(exc), "pending": pending}
 	return {"answer": final.get("content") or "", "pending": pending}

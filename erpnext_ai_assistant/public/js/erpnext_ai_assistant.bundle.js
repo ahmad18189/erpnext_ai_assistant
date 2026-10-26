@@ -32,6 +32,15 @@
       shrink: "الحجم الأصلي",
       noHistory: "لا توجد محادثات بعد.",
       error: "تعذّر إكمال الطلب. حاول مرة أخرى.",
+      memory: "ذاكرة",
+      memoryFact: "حقيقة للتذكر",
+      memoryKey: "المفتاح",
+      memoryConfirm: "أؤكد حفظ هذه الحقيقة",
+      memorySave: "حفظ",
+      memoryClear: "مسح ذاكرتي",
+      memoryEmpty: "لا حقائق محفوظة.",
+      memorySaved: "تم الحفظ.",
+      memoryNeedConfirm: "فعّل التأكيد أولاً.",
     },
     en: {
       brand: "ERP Assistant",
@@ -61,6 +70,15 @@
       shrink: "Original size",
       noHistory: "No chats yet.",
       error: "Could not finish. Please try again.",
+      memory: "Memory",
+      memoryFact: "Fact to remember",
+      memoryKey: "Key",
+      memoryConfirm: "I confirm saving this fact",
+      memorySave: "Save",
+      memoryClear: "Clear my memory",
+      memoryEmpty: "No saved facts.",
+      memorySaved: "Saved.",
+      memoryNeedConfirm: "Confirm first.",
     },
   };
 
@@ -202,7 +220,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai18";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai19";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -345,6 +363,7 @@
     var tabs = el("div", "erp-ai-tabs");
     var bChat = el("button", state.tab === "chat" ? "active" : "", t("chat"));
     var bHist = el("button", state.tab === "history" ? "active" : "", t("history"));
+    var bMem = el("button", state.tab === "memory" ? "active" : "", t("memory"));
     bChat.addEventListener("click", function () {
       state.tab = "chat";
       render();
@@ -354,8 +373,14 @@
       render();
       loadHistory();
     });
+    bMem.addEventListener("click", function () {
+      state.tab = "memory";
+      render();
+      loadMemoryPanel();
+    });
     tabs.appendChild(bChat);
     tabs.appendChild(bHist);
+    tabs.appendChild(bMem);
     root.appendChild(tabs);
 
     var body = el("div", "erp-ai-body");
@@ -369,6 +394,11 @@
 
     if (state.tab === "history") {
       body.appendChild(el("div", "erp-ai-empty", t("loading")));
+      return;
+    }
+
+    if (state.tab === "memory") {
+      renderMemoryForm(body);
       return;
     }
 
@@ -427,6 +457,102 @@
     if (!body) return;
     body.innerHTML = "";
     body.appendChild(el("div", "erp-ai-empty", t("empty")));
+  }
+
+  function renderMemoryForm(body) {
+    body.innerHTML = "";
+    var wrap = el("div", "erp-ai-memory");
+    var keyInput = document.createElement("input");
+    keyInput.type = "text";
+    keyInput.id = "erp-ai-mem-key";
+    keyInput.placeholder = t("memoryKey");
+    keyInput.setAttribute("dir", "auto");
+    keyInput.maxLength = 80;
+    var factInput = document.createElement("textarea");
+    factInput.id = "erp-ai-mem-fact";
+    factInput.placeholder = t("memoryFact");
+    factInput.setAttribute("dir", "auto");
+    factInput.rows = 3;
+    var confirmRow = el("label", "erp-ai-memory-confirm");
+    var confirmBox = document.createElement("input");
+    confirmBox.type = "checkbox";
+    confirmBox.id = "erp-ai-mem-confirm";
+    confirmRow.appendChild(confirmBox);
+    confirmRow.appendChild(document.createTextNode(" " + t("memoryConfirm")));
+    var actions = el("div", "erp-ai-memory-actions");
+    var saveBtn = el("button", "primary", t("memorySave"));
+    saveBtn.type = "button";
+    saveBtn.addEventListener("click", function () {
+      if (!confirmBox.checked) {
+        status.textContent = t("memoryNeedConfirm");
+        return;
+      }
+      call("erpnext_ai_assistant.api.chat.save_my_memory", {
+        key: (keyInput.value || "").trim(),
+        value: (factInput.value || "").trim(),
+        confirmed: 1,
+      })
+        .then(function () {
+          status.textContent = t("memorySaved");
+          keyInput.value = "";
+          factInput.value = "";
+          confirmBox.checked = false;
+          loadMemoryPanel();
+        })
+        .catch(function () {
+          status.textContent = t("error");
+        });
+    });
+    var clearBtn = el("button", "", t("memoryClear"));
+    clearBtn.type = "button";
+    clearBtn.addEventListener("click", function () {
+      call("erpnext_ai_assistant.api.chat.clear_my_memory", {})
+        .then(function () {
+          loadMemoryPanel();
+        })
+        .catch(function () {
+          status.textContent = t("error");
+        });
+    });
+    actions.appendChild(saveBtn);
+    actions.appendChild(clearBtn);
+    var status = textNode("div", "erp-ai-memory-status", "");
+    var list = el("div", "erp-ai-memory-list");
+    list.id = "erp-ai-mem-list";
+    list.appendChild(textNode("div", "erp-ai-empty", t("loading")));
+    wrap.appendChild(keyInput);
+    wrap.appendChild(factInput);
+    wrap.appendChild(confirmRow);
+    wrap.appendChild(actions);
+    wrap.appendChild(status);
+    wrap.appendChild(list);
+    body.appendChild(wrap);
+  }
+
+  function loadMemoryPanel() {
+    var list = document.getElementById("erp-ai-mem-list");
+    if (!list) return;
+    call("erpnext_ai_assistant.api.chat.list_my_memory", {})
+      .then(function (res) {
+        list.innerHTML = "";
+        var items = (res && res.items) || [];
+        if (!items.length) {
+          list.appendChild(textNode("div", "erp-ai-empty", t("memoryEmpty")));
+          return;
+        }
+        items.forEach(function (row) {
+          var item = el("div", "erp-ai-memory-item");
+          item.appendChild(textNode("strong", "", row.key || ""));
+          var val = textNode("div", "", "");
+          val.textContent = row.value || "";
+          item.appendChild(val);
+          list.appendChild(item);
+        });
+      })
+      .catch(function () {
+        list.innerHTML = "";
+        list.appendChild(textNode("div", "erp-ai-empty", t("error")));
+      });
   }
 
   function parseOpenLinks(content) {

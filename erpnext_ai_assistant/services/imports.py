@@ -31,12 +31,18 @@ def read_table(content: bytes, filename: str) -> tuple[list[str], list[list[str]
 	if name.endswith(".xlsx") or name.endswith(".xlsm"):
 		return _read_xlsx(content)
 	text = content.decode("utf-8-sig", errors="replace")
-	rows = list(csv.reader(io.StringIO(text)))
-	rows = [row for row in rows if any((cell or "").strip() for cell in row)]
-	if not rows:
-		return [], []
-	header = [str(cell or "").strip() for cell in rows[0]]
-	body = [[str(cell or "").strip() for cell in row] for row in rows[1:21]]
+	header: list[str] = []
+	body: list[list[str]] = []
+	for row in csv.reader(io.StringIO(text)):
+		if not any((cell or "").strip() for cell in row):
+			continue
+		cells = [str(cell or "").strip()[:200] for cell in row[:80]]
+		if not header:
+			header = cells
+			continue
+		body.append(cells)
+		if len(body) >= 20:
+			break
 	return header, body
 
 
@@ -49,7 +55,7 @@ def _read_xlsx(content: bytes) -> tuple[list[str], list[list[str]]]:
 	for i, row in enumerate(sheet.iter_rows(values_only=True)):
 		if i > 21:
 			break
-		values = ["" if cell is None else str(cell).strip() for cell in row]
+		values = ["" if cell is None else str(cell).strip()[:200] for cell in row[:80]]
 		if any(values):
 			rows.append(values)
 	book.close()

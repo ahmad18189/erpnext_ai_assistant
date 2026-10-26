@@ -3,6 +3,9 @@
 The model must not invent a DocType name such as Meeting. مهمة is ToDo.
 اجتماع is Event only when the user did not ask for a task. غدا is the next
 calendar day on this site, not a guessed year.
+
+When the match is unclear, return None so run_chat calls the AI with the
+cached non-child DocType catalog available via list_doctypes.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ import re
 
 import frappe
 from erpnext_ai_assistant.services.arabic import normalize_arabic
+from erpnext_ai_assistant.services.doctype_catalog import match_catalog
 from erpnext_ai_assistant.services.schema import DENIED_DOCTYPES
 
 # Longer phrases are tried first. مهمة is handled before this list.
@@ -28,18 +32,26 @@ _PHRASES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 	(("ليد", "lead", "leads"), ("CRM Lead", "Lead")),
 )
 
-_TASK_WORDS = ("مهمه", "مهام", "todo", "to-do", "to do", "task", "tasks")
+_TASK_WORDS = ("مهمه", "مهام", "todo", "todos", "to-do", "to do", "task", "tasks")
 _SYNONYMS = {
 	"meeting": "Event",
 	"meetings": "Event",
 	"task": "ToDo",
 	"tasks": "ToDo",
 	"todo": "ToDo",
+	"todos": "ToDo",
 	"to-do": "ToDo",
 	"to do": "ToDo",
+	"customer": "Customer",
+	"customers": "Customer",
+	"employee": "Employee",
+	"employees": "Employee",
+	"lead": "CRM Lead",
+	"leads": "CRM Lead",
 }
 _CREATE_WORDS = ("اعمل", "انشئ", "انشاء", "اضف", "اضيف", "سوي", "سو", "عمل", "create", "add", "make")
-_QUERY_WORDS = ("افتح", "اعرض", "قائمه", "ابحث", "كم", "list", "show", "open", "find")
+_QUERY_WORDS = ("افتح", "اعرض", "قائمه", "ابحث", "list", "show", "open", "find")
+_COUNT_WORDS = ("كم", "عدد", "how many", "count", "عددها", "كم عدد")
 _LIST_FIELDS = {
 	"ToDo": ["name", "description", "date", "status"],
 	"Event": ["name", "subject", "starts_on", "event_category"],
@@ -50,7 +62,7 @@ _LIST_FIELDS = {
 
 
 def match_doctype(text: str | None) -> str | None:
-	"""The DocType the user named. Task words win over the word اجتماع."""
+	"""The DocType the user named. Returns None when the match is not clear."""
 	norm = normalize_arabic(text)
 	if not norm:
 		return None
@@ -61,16 +73,30 @@ def match_doctype(text: str | None) -> str | None:
 		for phrase in phrases:
 			if _has(norm, phrase):
 				found.append((len(phrase), names))
+	for word, doctype in _SYNONYMS.items():
+		if _has(norm, word):
+			found.append((len(word), (doctype,)))
 	found.sort(key=lambda item: item[0], reverse=True)
 	for _length, names in found:
 		hit = _first_existing(names)
 		if hit:
 			return hit
-	return None
+	# Cached non-child DocTypes (name + translated labels)
+	catalog_hits = match_catalog(text, limit=3)
+	if not catalog_hits:
+		return None
+	top = catalog_hits[0]
+	# Ambiguous when two hits are close in score — leave it to the AI.
+	if len(catalog_hits) > 1 and catalog_hits[1]["score"] >= top["score"] - 2:
+		return None
+	name = top["name"]
+	if name in DENIED_DOCTYPES:
+		return None
+	return name
 
 
 def interpret(text: str | None) -> dict | None:
-	"""Return {doctype, action, values} when the message clearly targets a DocType."""
+	"""Return {doctype, action, values} only when both are clear. Else None → AI."""
 	doctype = match_doctype(text)
 	if not doctype:
 		return None
@@ -85,21 +111,34 @@ def canonical_doctype(name: str | None, user_text: str | None = None) -> str:
 	planned = interpret(user_text or "")
 	if planned:
 		return planned["doctype"]
+	from_text = match_doctype(user_text or "")
+	if from_text:
+		return from_text
 	cleaned = (name or "").strip()
 	if cleaned and cleaned not in DENIED_DOCTYPES and frappe.db.exists("DocType", cleaned):
-		return cleaned
+		# Must be a non-child DocType when possible
+		if not frappe.db.get_value("DocType", cleaned, "istable"):
+			return cleaned
 	synonym = _SYNONYMS.get(cleaned.lower())
 	if synonym and frappe.db.exists("DocType", synonym):
 		return synonym
+	# Last chance: catalog search on the tool argument itself
+	hits = match_catalog(cleaned, limit=1)
+	if hits:
+		return hits[0]["name"]
 	return match_doctype(cleaned) or cleaned
 
 
-def format_query(doctype: str, rows: list[dict], lang: str) -> str:
+def format_query(doctype: str, rows: list[dict], lang: str, capped: bool = False) -> str:
 	if lang == "ar":
-		lines = [f"وجدت {len(rows)} سجلًا من {doctype} ضمن صلاحياتك."]
+		lines = [f"هذه الصفحة تعرض {len(rows)} سجلًا من {doctype} ضمن صلاحياتك."]
+		if capped:
+			lines.append("هذه ليست القائمة كاملة.")
 		empty = f"لا توجد سجلات ظاهرة لك من {doctype}."
 	else:
-		lines = [f"Found {len(rows)} {doctype} records you can read."]
+		lines = [f"This page shows {len(rows)} {doctype} records you can read."]
+		if capped:
+			lines.append("This is not the full list.")
 		empty = f"No {doctype} records are visible to you."
 	if not rows:
 		return empty
@@ -139,10 +178,25 @@ def _values(doctype: str, text: str) -> dict:
 	return {}
 
 
+def needs_live_check(text: str | None) -> bool:
+	"""True when the reply must come from a tool result, not a model guess."""
+	norm = normalize_arabic(text)
+	if not norm:
+		return False
+	if any(_has(norm, word) for word in _COUNT_WORDS):
+		return True
+	if any(_has(norm, word) for word in _QUERY_WORDS):
+		return True
+	return bool(match_doctype(text) and re.search(r"\b(how many|list|show|open|find)\b|كم|عدد|قائمه|ابحث|اعرض|افتح", norm))
+
+
 def _action(text: str) -> str | None:
 	norm = normalize_arabic(text)
 	head = " ".join(norm.split()[:8])
 	question = head.startswith(("ما ", "كيف", "هل ", "why ", "how ", "what "))
+	# Count before create: "عمل" must not win inside "عملاء".
+	if any(_has(norm, word) for word in _COUNT_WORDS) or re.search(r"\bhow many\b|\bcount\b", norm):
+		return "count"
 	create = any(_has(head, word) for word in _CREATE_WORDS)
 	if question and not any(_has(norm, word) for word in ("انشئ", "اعمل", "اضف", "create", "add")):
 		create = False
@@ -151,6 +205,12 @@ def _action(text: str) -> str | None:
 	if any(_has(head, word) for word in _QUERY_WORDS):
 		return "query"
 	return None
+
+
+def format_count(doctype: str, total: int, lang: str) -> str:
+	if lang == "ar":
+		return f"عدد سجلات {doctype} الظاهرة لك: {total}."
+	return f"You can see {total} {doctype} records."
 
 
 def _relative_day(text: str) -> str | None:
@@ -246,6 +306,9 @@ def _has(norm: str, phrase: str) -> bool:
 	phrase = normalize_arabic(phrase)
 	if not phrase:
 		return False
-	if " " in phrase or re.search(r"[\u0600-\u06FF]", phrase):
+	if " " in phrase:
 		return phrase in norm
-	return bool(re.search(rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])", norm))
+	# Arabic tokens may appear with the definite article ال (المهام، العملاء).
+	if re.search(r"[\u0600-\u06FF]", phrase):
+		return bool(re.search(rf"(?<!\w)(?:ال)?{re.escape(phrase)}(?!\w)", norm, re.UNICODE))
+	return bool(re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", norm, re.UNICODE))

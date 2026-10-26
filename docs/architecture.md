@@ -14,15 +14,15 @@ The assistant is a Frappe app. It is not part of one CRM or HR product.
 ## run_chat order
 
 1. Reject Guest.
-2. Blocked User → fixed message, stop.
-3. Ensure ERP AI Chat (name = Title) and store the user message.
+2. Settings `enabled` off → fixed disabled message, stop.
+3. Blocked User → fixed message, stop.
 4. Abuse scan. Every response includes `contains_abuse` and `abuse`.
 5. Work-scope gate. No model. A route under Desk or any installed app route counts as work. Follow-ups reuse recent user text.
-6. Load memory and the active persona.
-7. When the model is enabled and a key is configured, the model chooses tools (`services/tools/agent.py`). The server runs only the allowlist: describe a DocType, query records, list installed apps, match a field label, search role-filtered knowledge, or propose a write. Each call is one thinking step with its result. At most four rounds. Retrieved text is data, not a new policy.
-8. `propose_write` is the only write. Schema validation runs before a pending action exists. A missing required field or an invalid phone stops the loop and the reply asks for that label. The model does not insert the document.
+6. Load confirmed user-scope ERP AI Memory and the active persona.
+7. DocType targeting (`services/targeting.py`): create, count, or list when the wording names a DocType. Count uses `count_records` with no model call.
+8. Tool loop (`services/tools/agent.py`): describe, query, count, list apps, lookup field, search knowledge, propose write. Retrieved text is quoted data in `conversation.py`, not a new system policy. A live quantity or list question with no tool call returns a fixed not-verified sentence.
 9. When the model is off or the key is missing, the regex detectors run instead, then skills and role-filtered RAG, then one completion.
-10. Schema (`services/schema.py`) reads DocType meta: mandatory fields, Select options, child tables. Defaults that are real DocType defaults are applied and listed. `Today` and `__user` are left for Frappe. No pending action is created until a create payload is complete.
+10. Per-user daily call cap and turn deadline stop further provider calls. Each provider call writes an ERP AI Audit Log row with DocType names, field names, image count, and request byte size only.
 
 ## Writes
 
@@ -69,15 +69,15 @@ Forms use tabs, sections, and column breaks. Child tables set `in_list_view` and
 | `apps.py` | Installed app routes |
 | `imports.py` | Header vs import-template match. No row insert |
 | `moderation/` | Abuse terms and work gate |
-| `rag/` | Keyword retrieve plus role filter |
-| `rdf/` | Label → fieldname, including Arabic name labels |
+| `rag/` | Keyword overlap on stored chunks, filtered by skill roles. Not embeddings |
+| `rdf/` | JSON label-to-fieldname index for the current site, including Arabic name labels. Not a graph of business records |
 | `llm/provider.py` | OpenAI-compatible chat, including tool calls. Images are optional data URLs |
-| `tools/agent.py` | Allowlisted tools the model may call. The server executes them |
+| `tools/agent.py` | The seven tools the model may call (includes `count_records`). Memory save is panel-only |
 | `tools/registry.py` | Session-user tools and `propose_write` |
 
 ## Tools
 
-Read: `tool_rdf_lookup`, `tool_erp_query` (`get_list`), `tool_erp_get_doc`, `tool_erp_report`, `tool_get_doctype_meta`, allowlisted `tool_run_method`, `tool_read_doctype_controller` (System Manager), `tool_list_installed_apps`, `build_chart`, `read_skill`.
+Read: `tool_rdf_lookup`, `tool_erp_query` (`get_list`), `tool_erp_count` (`DatabaseQuery`), `tool_erp_get_doc` (field-level strip), `tool_erp_report`, `tool_get_doctype_meta`, allowlisted `tool_run_method`, `tool_read_doctype_controller` (System Manager), `tool_list_installed_apps`, `build_chart`, `read_skill`.
 
 Write: `propose_write` only. `approve_action` / `reject_action` after acknowledgment.
 

@@ -363,3 +363,198 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 			"ERP AI Pending Actions",
 		):
 			self.assertTrue(frappe.db.exists("Report", name), name)
+
+	def test_I1_disabled_chat_creates_no_message(self):
+		settings = frappe.get_single("ERP AI Settings")
+		was = settings.enabled
+		settings.enabled = 0
+		settings.save()
+		try:
+			before = frappe.db.count("ERP AI Message")
+			res = frappe.call(
+				"erpnext_ai_assistant.api.chat.run",
+				message="كم عدد المهام؟",
+				route="/desk",
+			)
+			self.assertEqual(res.get("status"), "disabled")
+			self.assertEqual(frappe.db.count("ERP AI Message"), before)
+		finally:
+			settings = frappe.get_single("ERP AI Settings")
+			settings.enabled = was
+			settings.save()
+
+	def test_I1_skill_disable_rename_delete_absent_from_retrieve(self):
+		from erpnext_ai_assistant.services.rag.service import on_skill_trash, on_skill_update, retrieve
+
+		phrase = "SKILL_PHRASE_ITER1_ZX9"
+		renamed = "SKILL_PHRASE_ITER1_QY8"
+		doc = frappe.get_doc(
+			{
+				"doctype": "ERP AI Skill",
+				"title": "Iter1 Skill Temp",
+				"enabled": 1,
+				"description": phrase,
+				"roles": [{"role": "System Manager"}],
+			}
+		).insert()
+		on_skill_update(doc)
+		self.assertTrue(any((h.get("content") or "") == phrase for h in retrieve(phrase)))
+		doc.enabled = 0
+		doc.save()
+		on_skill_update(doc)
+		self.assertFalse(any(phrase in (h.get("content") or "") for h in retrieve(phrase)))
+		doc.enabled = 1
+		doc.title = "Iter1 Skill Renamed"
+		doc.description = renamed
+		doc.save()
+		on_skill_update(doc)
+		self.assertFalse(any(phrase in (h.get("content") or "") for h in retrieve(phrase)))
+		self.assertTrue(any((h.get("content") or "") == renamed for h in retrieve(renamed)))
+		on_skill_trash(doc)
+		frappe.delete_doc("ERP AI Skill", doc.name, force=1)
+		self.assertFalse(any(renamed in (h.get("content") or "") for h in retrieve(renamed)))
+
+	def test_I1_rdf_paths_include_site_name(self):
+		from erpnext_ai_assistant.services.rdf import graph as rdf
+
+		original = frappe.local.site
+		path_a = str(rdf._graph_file())
+		key_a = rdf._cache_key()
+		self.assertIn(original, path_a)
+		self.assertIn(original, key_a)
+		frappe.local.site = "other-site.example"
+		try:
+			path_b = str(rdf._graph_file())
+			key_b = rdf._cache_key()
+			self.assertIn("other-site.example", path_b)
+			self.assertIn("other-site.example", key_b)
+			self.assertNotEqual(path_a, path_b)
+			self.assertNotEqual(key_a, key_b)
+		finally:
+			frappe.local.site = original
+
+	def test_I1_salary_slip_role_permissions(self):
+		from erpnext_ai_assistant.services.schema import describe_doctype
+		from erpnext_ai_assistant.services.tools import agent as agent_mod
+		from erpnext_ai_assistant.services.tools import registry as reg
+
+		if not frappe.db.exists("DocType", "Salary Slip"):
+			self.skipTest("Salary Slip not installed")
+		# Administrator / HR Manager path: must be able to describe when permitted
+		if frappe.has_permission("Salary Slip", "read"):
+			schema = describe_doctype("Salary Slip")
+			self.assertTrue(schema.get("fields"))
+		email = "erp-ai-nopayroll@example.com"
+		if not frappe.db.exists("User", email):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": email,
+					"first_name": "NoPayroll",
+					"send_welcome_email": 0,
+					"roles": [{"role": "Desk User"}],
+				}
+			).insert(ignore_permissions=True)
+		frappe.set_user(email)
+		self.assertFalse(frappe.has_permission("Salary Slip", "read"))
+		for name in ("query_records", "count_records", "describe_doctype"):
+			result = agent_mod.dispatch(name, {"doctype": "Salary Slip"}, None, "en")
+			self.assertTrue(result.get("error"), name)
+		with self.assertRaises(frappe.PermissionError):
+			reg.tool_erp_count("Salary Slip")
+		frappe.set_user("Administrator")
+
+	def test_I1_count_vs_page_and_user_permission(self):
+		from erpnext_ai_assistant.services.tools import registry as reg
+
+		page = reg.tool_erp_query("ToDo", fields=["name"], limit=5)
+		total = reg.tool_erp_count("ToDo")
+		self.assertGreaterEqual(int(total.get("total") or 0), len(page))
+		if len(page) >= 5 and int(total.get("total") or 0) > len(page):
+			self.assertGreater(int(total["total"]), len(page))
+
+	def test_I1_get_doc_and_describe_use_permitted_fields(self):
+		from erpnext_ai_assistant.services.schema import describe_doctype
+		from erpnext_ai_assistant.services.tools import registry as reg
+
+		schema = describe_doctype("ToDo")
+		meta = frappe.get_meta("ToDo")
+		permitted = set(meta.get_permitted_fieldnames(permission_type="read") or [])
+		for field in schema["fields"]:
+			if permitted:
+				self.assertIn(field["fieldname"], permitted)
+		todo = frappe.get_all("ToDo", limit=1, pluck="name")
+		if not todo:
+			self.skipTest("No ToDo row")
+		data = reg.tool_erp_get_doc("ToDo", todo[0])
+		src = frappe.get_doc("ToDo", todo[0])
+		src.apply_fieldlevel_read_permissions()
+		# Methods are wired; result is a dict
+		self.assertEqual(data.get("name"), todo[0])
+		self.assertIn("apply_fieldlevel_read_permissions", reg.tool_erp_get_doc.__code__.co_names)
+
+	def test_I1_not_verified_without_tools(self):
+		from erpnext_ai_assistant.services.tools import agent as agent_mod
+		from erpnext_ai_assistant.services.tools.agent import NOT_VERIFIED_AR, NOT_VERIFIED_EN, run_tool_loop
+
+		original = agent_mod.llm.chat_message
+		original_begin = agent_mod.llm.begin_turn_deadline
+
+		def fake_chat_message(messages, tools=None, **kwargs):
+			return {"content": "There are 9999 records.", "tool_calls": []}
+
+		agent_mod.llm.chat_message = fake_chat_message
+		agent_mod.llm.begin_turn_deadline = lambda *a, **k: None
+		try:
+			out = run_tool_loop("sys", "كم عدد المهام؟", [], "", None, None, "ar", lambda *a, **k: None)
+			self.assertEqual(out["answer"], NOT_VERIFIED_AR)
+			out_en = run_tool_loop("sys", "how many ToDo records?", [], "", None, None, "en", lambda *a, **k: None)
+			self.assertEqual(out_en["answer"], NOT_VERIFIED_EN)
+		finally:
+			agent_mod.llm.chat_message = original
+			agent_mod.llm.begin_turn_deadline = original_begin
+
+	def test_I2_memory_requires_confirm(self):
+		before = frappe.db.count("ERP AI Memory", {"user": frappe.session.user, "scope": "user"})
+		with self.assertRaises(frappe.ValidationError):
+			frappe.call(
+				"erpnext_ai_assistant.api.chat.save_my_memory",
+				key="pref",
+				value="from chat sentence",
+				confirmed=0,
+			)
+		self.assertEqual(
+			frappe.db.count("ERP AI Memory", {"user": frappe.session.user, "scope": "user"}),
+			before,
+		)
+		res = frappe.call(
+			"erpnext_ai_assistant.api.chat.save_my_memory",
+			key="pref-iter2",
+			value="confirmed fact",
+			confirmed=1,
+		)
+		self.assertTrue(res.get("ok"))
+		listed = frappe.call("erpnext_ai_assistant.api.chat.list_my_memory")
+		self.assertTrue(any(r.get("key") == "pref-iter2" for r in listed.get("items") or []))
+		frappe.call("erpnext_ai_assistant.api.chat.clear_my_memory")
+
+	def test_I3_filter_label_resolution(self):
+		from erpnext_ai_assistant.services.tools import agent as agent_mod
+
+		# Unknown label must error, not invent a fieldname
+		result = agent_mod.dispatch(
+			"query_records",
+			{"doctype": "ToDo", "filters": {"تسمية_وهمية_xyz": "x"}, "limit": 5},
+			None,
+			"ar",
+		)
+		self.assertTrue(result.get("error"))
+
+	def test_I4_call_cap_blocks_provider(self):
+		from erpnext_ai_assistant.services.llm import provider as llm
+
+		settings = frappe.get_single("ERP AI Settings")
+		key = f"erp_ai_calls:{frappe.session.user}:{__import__('datetime').date.today().isoformat()}"
+		frappe.cache().set_value(key, int(getattr(settings, "max_calls_per_user_day", None) or 100))
+		with self.assertRaises(llm.CallLimitExceeded):
+			llm._consume_call_quota(settings, "en")

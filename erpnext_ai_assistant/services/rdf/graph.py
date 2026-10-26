@@ -8,15 +8,15 @@ from pathlib import Path
 import frappe
 from erpnext_ai_assistant.services.arabic import normalize_arabic
 
-GRAPH_PATH = None
-
-
 def _graph_file() -> Path:
-	global GRAPH_PATH
-	if GRAPH_PATH is None:
-		site_path = Path(frappe.get_site_path("private", "files", "erp_ai_rdf.json"))
-		GRAPH_PATH = site_path
-	return GRAPH_PATH
+	"""Path for the current site. Always include frappe.local.site in the path."""
+	site = getattr(frappe.local, "site", None) or ""
+	sites_path = getattr(frappe.local, "sites_path", None) or "."
+	return Path(sites_path) / site / "private" / "files" / "erp_ai_rdf.json"
+
+
+def _cache_key() -> str:
+	return f"erp_ai_rdf_index:{getattr(frappe.local, 'site', '')}"
 
 
 def rebuild_rdf_graph(doctypes: list[str] | None = None) -> dict:
@@ -92,21 +92,21 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None) -> dict:
 	path = _graph_file()
 	path.parent.mkdir(parents=True, exist_ok=True)
 	path.write_text(json.dumps(index, ensure_ascii=False, indent=2))
-	frappe.cache().set_value("erp_ai_rdf_index", index)
+	frappe.cache().set_value(_cache_key(), index)
 	return {"keys": len(index), "path": str(path)}
 
 
 def _load_index() -> dict:
-	cached = frappe.cache().get_value("erp_ai_rdf_index")
+	cached = frappe.cache().get_value(_cache_key())
 	if cached:
 		return cached
 	path = _graph_file()
 	if path.exists():
 		index = json.loads(path.read_text())
-		frappe.cache().set_value("erp_ai_rdf_index", index)
+		frappe.cache().set_value(_cache_key(), index)
 		return index
 	rebuild_rdf_graph()
-	return frappe.cache().get_value("erp_ai_rdf_index") or {}
+	return frappe.cache().get_value(_cache_key()) or {}
 
 
 def lookup(query: str, doctype: str | None = None) -> list[dict]:
@@ -134,8 +134,27 @@ def lookup(query: str, doctype: str | None = None) -> list[dict]:
 		if k in seen:
 			continue
 		seen.add(k)
+		if not _can_see(h["doctype"]):
+			continue
+		if not _can_read_field(h["doctype"], h["fieldname"]):
+			continue
 		out.append(h)
 	return out[:20]
+
+
+def _can_see(doctype: str) -> bool:
+	return bool(frappe.has_permission(doctype, "read") or frappe.has_permission(doctype, "create"))
+
+
+def _can_read_field(doctype: str, fieldname: str) -> bool:
+	try:
+		meta = frappe.get_meta(doctype)
+	except Exception:
+		return False
+	permitted = set(meta.get_permitted_fieldnames(permission_type="read") or [])
+	if not permitted:
+		return True
+	return fieldname in permitted
 
 
 def on_custom_field_change(doc, method=None):

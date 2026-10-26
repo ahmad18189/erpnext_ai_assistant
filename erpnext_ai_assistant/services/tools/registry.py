@@ -63,11 +63,30 @@ def tool_erp_query(
 	return frappe.get_list(**kwargs)
 
 
+def tool_erp_count(doctype: str, filters=None) -> dict:
+	"""Permission-scoped total. Uses DatabaseQuery, not frappe.db.count or get_all."""
+	if not frappe.has_permission(doctype, "read"):
+		frappe.throw(f"No read permission for {doctype}", frappe.PermissionError)
+	from frappe.model.db_query import DatabaseQuery
+
+	rows = DatabaseQuery(doctype).execute(
+		fields=["count(name) as total"],
+		filters=filters or {},
+		ignore_permissions=False,
+		limit=None,
+	)
+	total = 0
+	if rows:
+		total = int(rows[0].get("total") or rows[0].get("count(name)") or 0)
+	return {"doctype": doctype, "total": total}
+
+
 def tool_erp_get_doc(doctype: str, name: str) -> dict:
 	if not frappe.has_permission(doctype, "read"):
 		frappe.throw(f"No read permission for {doctype}", frappe.PermissionError)
 	doc = frappe.get_doc(doctype, name)
 	doc.check_permission("read")
+	doc.apply_fieldlevel_read_permissions()
 	return doc.as_dict()
 
 

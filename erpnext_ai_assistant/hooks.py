@@ -7,8 +7,8 @@ app_description = "Workplace ERP/CRM assistant panel for Frappe."
 app_email = "devnull@localhost"
 app_license = "MIT"
 
-app_include_js = ["/assets/erpnext_ai_assistant/js/erpnext_ai_assistant.bundle.js?v=ai18"]
-app_include_css = ["/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai18"]
+app_include_js = ["/assets/erpnext_ai_assistant/js/erpnext_ai_assistant.bundle.js?v=ai19"]
+app_include_css = ["/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai19"]
 
 after_migrate = ["erpnext_ai_assistant.install.after_migrate"]
 after_install = ["erpnext_ai_assistant.install.after_install"]
@@ -20,5 +20,11 @@ doc_events = {
 	},
 	"ERP AI Skill": {
 		"on_update": "erpnext_ai_assistant.services.rag.service.on_skill_update",
+		"on_trash": "erpnext_ai_assistant.services.rag.service.on_skill_trash",
+	},
+	"DocType": {
+		"after_insert": "erpnext_ai_assistant.services.doctype_catalog.clear_doctype_catalog",
+		"on_update": "erpnext_ai_assistant.services.doctype_catalog.clear_doctype_catalog",
+		"on_trash": "erpnext_ai_assistant.services.doctype_catalog.clear_doctype_catalog",
 	},
 }

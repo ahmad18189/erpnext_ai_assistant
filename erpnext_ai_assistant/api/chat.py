@@ -33,7 +33,7 @@ def upload_attachment():
 	if not upload:
 		frappe.throw("No file")
 	filename = (upload.filename or "upload").replace("/", "_").replace("\\", "_")
-	content = upload.stream.read()
+	content = upload.stream.read(5_000_001)
 	if len(content) > 5_000_000:
 		frappe.throw("File is larger than 5 MB")
 	ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -142,6 +142,8 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	if doc.status != "pending":
 		frappe.throw(f"Action is {doc.status}")
 	settings = frappe.get_single("ERP AI Settings")
+	# A pending card can still be approved when new chat turns are turned off.
+	# Execution depends on allow_pending_writes, the payload hash, and permissions.
 	if not settings.allow_pending_writes:
 		frappe.throw("Writes are disabled in ERP AI Settings")
 	from erpnext_ai_assistant.services.writes import payload_hash
@@ -316,6 +318,62 @@ def clear_my_memory():
 		frappe.throw("Login required", frappe.PermissionError)
 	frappe.db.delete("ERP AI Memory", {"user": frappe.session.user, "scope": "user"})
 	return {"ok": True}
+
+
+@frappe.whitelist()
+def list_my_memory():
+	"""List confirmed user-scope memory for the session user only."""
+	if frappe.session.user == "Guest":
+		frappe.throw("Login required", frappe.PermissionError)
+	rows = frappe.get_all(
+		"ERP AI Memory",
+		filters={"user": frappe.session.user, "scope": "user", "enabled": 1},
+		fields=["name", "key", "value", "modified"],
+		order_by="modified desc",
+		limit_page_length=50,
+	)
+	return {"items": rows}
+
+
+@frappe.whitelist()
+def save_my_memory(key: str, value: str, confirmed: int | bool | str = 0):
+	"""Save only when the panel sends confirmed=1. The model cannot call this."""
+	if frappe.session.user == "Guest":
+		frappe.throw("Login required", frappe.PermissionError)
+	ok = confirmed in (True, 1, "1", "true", "True")
+	if not ok:
+		frappe.throw("Confirm the fact before saving", frappe.ValidationError)
+	key = (key or "").strip()[:80]
+	value = (value or "").strip()[:500]
+	if not key or not value:
+		frappe.throw("Key and value are required")
+	from erpnext_ai_assistant.services.naming import as_title
+
+	title = as_title("ERP AI Memory", f"{frappe.session.user}:{key}")
+	existing = frappe.db.get_value(
+		"ERP AI Memory",
+		{"user": frappe.session.user, "scope": "user", "key": key},
+		"name",
+	)
+	if existing:
+		doc = frappe.get_doc("ERP AI Memory", existing)
+		doc.value = value
+		doc.enabled = 1
+		doc.save(ignore_permissions=True)
+	else:
+		doc = frappe.get_doc(
+			{
+				"doctype": "ERP AI Memory",
+				"title": title,
+				"user": frappe.session.user,
+				"scope": "user",
+				"key": key,
+				"value": value,
+				"enabled": 1,
+			}
+		)
+		doc.insert(ignore_permissions=True)
+	return {"ok": True, "name": doc.name, "key": key}
 
 
 def _record_link(doctype: str, name: str) -> dict:

@@ -481,6 +481,64 @@
   padding: 1rem 0;
 }
 
+.erp-ai-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.75rem;
+}
+
+.erp-ai-memory input[type="text"],
+.erp-ai-memory textarea {
+  width: 100%;
+  border: 1px solid var(--erp-ai-border);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.erp-ai-memory-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #334155;
+}
+
+.erp-ai-memory-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.erp-ai-memory-status {
+  min-height: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--erp-ai-muted);
+}
+
+.erp-ai-memory-list {
+  border-top: 1px solid var(--erp-ai-border);
+  padding-top: 0.5rem;
+  overflow: auto;
+  max-height: 220px;
+}
+
+.erp-ai-memory-item {
+  border: 1px solid var(--erp-ai-border);
+  border-radius: 10px;
+  padding: 0.45rem 0.55rem;
+  margin-bottom: 0.4rem;
+  background: #fff;
+  font-size: 0.85rem;
+}
+
+.erp-ai-memory-item strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
 @media (max-width: 520px) {
   .erp-ai-root {
     top: 72px;
