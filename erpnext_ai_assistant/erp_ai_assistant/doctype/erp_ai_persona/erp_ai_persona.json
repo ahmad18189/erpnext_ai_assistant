@@ -10,26 +10,71 @@
  "track_changes": 1,
  "fields": [
   {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Persona"
+  },
+  {
    "fieldname": "persona_name",
    "fieldtype": "Data",
    "label": "Persona Name",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
   },
   {
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enabled",
-   "default": 1
+   "default": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "panel_label",
    "fieldtype": "Data",
-   "label": "Panel Label"
+   "label": "Panel Label",
+   "in_list_view": 1
   },
   {
    "fieldname": "panel_label_ar",
    "fieldtype": "Data",
-   "label": "Panel Label AR"
+   "label": "Panel Label AR",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "default_language",
+   "fieldtype": "Select",
+   "label": "Default Language",
+   "options": "ar\nen",
+   "default": "ar",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "avatar",
+   "fieldtype": "Attach Image",
+   "label": "Avatar"
+  },
+  {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "sec_tone",
+   "fieldtype": "Section Break",
+   "label": "Tone"
   },
   {
    "fieldname": "tone_instructions",
@@ -37,16 +82,14 @@
    "label": "Tone Instructions"
   },
   {
-   "fieldname": "default_language",
-   "fieldtype": "Select",
-   "label": "Default Language",
-   "options": "ar\nen",
-   "default": "ar"
+   "fieldname": "tab_roles",
+   "fieldtype": "Tab Break",
+   "label": "Roles"
   },
   {
-   "fieldname": "avatar",
-   "fieldtype": "Attach Image",
-   "label": "Avatar"
+   "fieldname": "sec_roles",
+   "fieldtype": "Section Break",
+   "label": "Roles"
   },
   {
    "fieldname": "roles",
@@ -64,12 +107,16 @@
    "delete": 1,
    "export": 1,
    "report": 1,
-   "share": 1
+   "share": 1,
+   "email": 1
   }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash",
- "title_field": "persona_name"
+ "autoname": "field:persona_name",
+ "naming_rule": "By fieldname",
+ "title_field": "persona_name",
+ "show_title_field_in_link": 1,
+ "search_fields": "enabled,default_language"
 }

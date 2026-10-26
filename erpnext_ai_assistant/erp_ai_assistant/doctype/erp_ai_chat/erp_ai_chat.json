@@ -10,9 +10,23 @@
  "track_changes": 1,
  "fields": [
   {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Chat"
+  },
+  {
    "fieldname": "title",
    "fieldtype": "Data",
-   "label": "Title"
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
   },
   {
    "fieldname": "user",
@@ -20,32 +34,59 @@
    "label": "User",
    "options": "User",
    "reqd": 1,
-   "default": "__user"
+   "default": "__user",
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
-   "fieldname": "route",
-   "fieldtype": "Data",
-   "label": "Route"
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
    "options": "Open\nClosed",
-   "default": "Open"
+   "default": "Open",
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
    "fieldname": "language",
    "fieldtype": "Select",
    "label": "Language",
    "options": "ar\nen",
-   "default": "ar"
+   "default": "ar",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "route",
+   "fieldtype": "Data",
+   "label": "Route",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "tab_memory",
+   "fieldtype": "Tab Break",
+   "label": "Memory"
+  },
+  {
+   "fieldname": "sec_summary",
+   "fieldtype": "Section Break",
+   "label": "Context"
   },
   {
    "fieldname": "context_summary",
    "fieldtype": "Long Text",
    "label": "Context Summary",
    "description": "Rolling conversation memory for follow-ups"
+  },
+  {
+   "fieldname": "sec_facts",
+   "fieldtype": "Section Break",
+   "label": "Session Facts"
   },
   {
    "fieldname": "session_facts_json",
@@ -77,6 +118,9 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash",
- "title_field": "title"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "user,status,route,language"
 }

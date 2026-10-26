@@ -40,7 +40,7 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None)
 
 	if abuse_mod.is_user_blocked(user):
 		text = abuse_mod.blocked_message(lang)
-		chat = _ensure_chat(chat_id, route, lang)
+		chat = _ensure_chat(chat_id, route, lang, message)
 		_save_msg(chat.name, "user", message, "blocked")
 		asst = _save_msg(chat.name, "assistant", text, "blocked")
 		return {
@@ -51,7 +51,7 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None)
 			**_abuse_payload({"hit": True, "contains_abuse": True, "category": "blocked", "score": 0}),
 		}
 
-	chat = _ensure_chat(chat_id, route, lang)
+	chat = _ensure_chat(chat_id, route, lang, message)
 	_save_msg(chat.name, "user", message, "complete")
 	steps: list[dict] = []
 
@@ -100,8 +100,22 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None)
 			**_abuse_payload(abuse),
 		}
 
+	recent_user = [
+		r.content
+		for r in frappe.get_all(
+			"ERP AI Message",
+			filters={"chat": chat.name, "role": "user"},
+			fields=["content"],
+			order_by="creation desc",
+			limit=6,
+		)
+		if r.content and r.content != message
+	]
 	step("work", "بوابة نطاق العمل", "Work-scope gate", "work_gate", "running")
-	if settings.work_only and not work_gate.is_work_related(message, route):
+	work_blob = " ".join([message, *recent_user])
+	if settings.work_only and not (
+		work_gate.is_work_related(message, route) or work_gate.is_work_related(work_blob, route or "/crm")
+	):
 		ar, en = work_gate.refusal_texts(settings)
 		text = ar if lang == "ar" else en
 		step("work", "بوابة نطاق العمل", "Work-scope gate", "work_gate", "done")
@@ -143,7 +157,12 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None)
 	# Detectors: live CRM / invoices / orgs / charts / apps
 	step("detect", "تحليل الطلب", "Detect intent", "detectors", "running")
 	detected = detectors.gather_context(
-		message, route, lang, chat_id=chat.name, session_facts=prior_facts
+		message,
+		route,
+		lang,
+		chat_id=chat.name,
+		session_facts=prior_facts,
+		recent_user_texts=recent_user,
 	)
 	steps.extend(detected.get("steps") or [])
 	step("detect", "تحليل الطلب", "Detect intent", "detectors", "done")
@@ -163,9 +182,10 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None)
 	session_facts = conv.extract_session_facts(message, charts=charts, tool_parts=tool_parts)
 	for k, v in prior_facts.items():
 		session_facts.setdefault(k, v)
-	if pending and pending.get("status") == "pending":
+	if pending and (pending.get("status") == "pending" or pending.get("error") == "missing_name"):
 		session_facts["pending_intent"] = "create_lead"
-		session_facts["pending_action"] = pending.get("pending_action")
+		if pending.get("pending_action"):
+			session_facts["pending_action"] = pending.get("pending_action")
 	if session_facts:
 		tool_parts.append("Session facts for follow-ups:\n" + json.dumps(session_facts, ensure_ascii=False))
 
@@ -196,12 +216,14 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None)
 
 	asst = _save_msg(chat.name, "assistant", answer, "complete", steps)
 	for ch in charts:
+		from erpnext_ai_assistant.services.naming import as_title
+
 		frappe.get_doc(
 			{
 				"doctype": "ERP AI Generated Chart",
 				"message": asst.name,
 				"chart_type": ch.get("type"),
-				"title": ch.get("title"),
+				"title": as_title("ERP AI Generated Chart", ch.get("title") or ch.get("type") or "Chart"),
 				"payload_json": json.dumps(ch, ensure_ascii=False),
 			}
 		).insert(ignore_permissions=True)
@@ -246,19 +268,29 @@ def _answer_for_pending(pending: dict | None, lang: str) -> str | None:
 	if pending.get("status") == "pending" and pending.get("pending_action"):
 		if lang == "ar":
 			return (
-				"تم تجهيز طلب إنشاء العميل المحتمل. راجع الملخص أدناه، فعّل خانة التأكيد، ثم اضغط موافقة "
-				"لتنفيذه بصلاحياتك. لن يُحفظ شيء قبل موافقتك.\n\n"
+				"تم تجهيز الطلب. راجع الملخص، فعّل خانة التأكيد، ثم اضغط موافقة. "
+				"لن يُحفظ شيء قبل موافقتك.\n\n"
 				+ (pending.get("summary") or "")
 			)
 		return (
-			"I prepared a create-lead request. Review the summary below, check the acknowledgment box, "
-			"then Approve to run it with your permissions. Nothing is saved until you approve.\n\n"
+			"I prepared this request. Review the summary, check the box, then Approve. "
+			"Nothing is saved until you approve.\n\n"
 			+ (pending.get("summary") or "")
 		)
-	if pending.get("error") == "no_create_permission":
+	if pending.get("message_ar") or pending.get("message_en"):
 		return pending.get("message_ar") if lang == "ar" else pending.get("message_en")
 	if pending.get("error") == "missing_name":
-		return pending.get("message_ar") if lang == "ar" else pending.get("message_en")
+		if lang == "ar":
+			return (
+				"نعم، أقدر أجهّز إنشاء العميل المحتمل. أرسل الاسم والبريد بهذا الشكل:\n"
+				"إنشاء عميل اسمه أحمد البريد name@example.com\n"
+				"سأعرض بطاقة موافقة ولن يُحفظ شيء قبل أن تضغط موافقة."
+			)
+		return (
+			"Yes. I can prepare the new lead for you. Send the name and email like this:\n"
+			"create lead name Ahmed email name@example.com\n"
+			"I will show an approval card. Nothing is saved until you press Approve."
+		)
 	if pending.get("status") == "failed":
 		err = pending.get("error") or "failed"
 		return (
@@ -278,19 +310,31 @@ def _sanitize_answer(answer: str | None, lang: str, has_data: bool = False) -> s
 			if lang == "ar"
 			else "I have data for this request but could not form a clear answer. Please rephrase or name the lead/report you need."
 		)
-	# If the model still opens with only that stub, strip/replace
-	if text.startswith("ضمن صلاحياتك") and len(text) < 40:
-		return _sanitize_answer("ضمن صلاحياتك", lang, has_data=has_data)
+	# Model often refuses creates with this phrase instead of the approval card
+	if ("ضمن صلاحياتك" in text or "within your permissions" in text.lower()) and (
+		len(text) < 220 or re.search(r"create|إنشاء|lead|عميل", text, re.I)
+	):
+		if lang == "ar":
+			return (
+				"أقدر أجهّز إنشاء العميل المحتمل لك. أرسل الاسم والبريد، ثم وافق على البطاقة. "
+				"لن يُحفظ السجل قبل موافقتك."
+			)
+		return (
+			"I can prepare the lead for you. Send the name and email, then Approve the card. "
+			"Nothing is saved before you approve."
+		)
 	return answer or ""
 
 
-def _ensure_chat(chat_id: str | None, route: str | None, lang: str):
+def _ensure_chat(chat_id: str | None, route: str | None, lang: str, message: str | None = None):
 	if chat_id and frappe.db.exists("ERP AI Chat", chat_id):
 		chat = frappe.get_doc("ERP AI Chat", chat_id)
 		if chat.user != frappe.session.user and "System Manager" not in frappe.get_roles():
 			frappe.throw("Not your chat", frappe.PermissionError)
 		return chat
-	title = (route or "chat")[:40]
+	from erpnext_ai_assistant.services.naming import as_title
+
+	title = as_title("ERP AI Chat", (message or route or "Chat")[:80])
 	chat = frappe.get_doc(
 		{
 			"doctype": "ERP AI Chat",
@@ -306,9 +350,12 @@ def _ensure_chat(chat_id: str | None, route: str | None, lang: str):
 
 
 def _save_msg(chat: str, role: str, content: str, status: str, steps: list | None = None):
+	from erpnext_ai_assistant.services.naming import as_title
+
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Message",
+			"title": as_title("ERP AI Message", f"{role}: {(content or '')[:70]}"),
 			"chat": chat,
 			"role": role,
 			"content": content,
@@ -386,9 +433,12 @@ def _base_system(persona: dict, memory_bits: list[str], lang: str) -> str:
 
 def _audit(event_type: str, chat: str, payload: dict):
 	try:
+		from erpnext_ai_assistant.services.naming import as_title
+
 		frappe.get_doc(
 			{
 				"doctype": "ERP AI Audit Log",
+				"title": as_title("ERP AI Audit Log", event_type),
 				"event_type": event_type,
 				"user": frappe.session.user,
 				"chat": chat,

@@ -7,20 +7,73 @@
  "issingle": 0,
  "istable": 0,
  "editable_grid": 0,
- "track_changes": 0,
+ "track_changes": 1,
  "fields": [
+  {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Event"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
+  },
   {
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
    "options": "User",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "profanity\ninsult\nviolence\nharassment\nother",
+   "default": "other",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "score",
+   "fieldtype": "Float",
+   "label": "Score",
+   "default": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sec_links",
+   "fieldtype": "Section Break",
+   "label": "Links"
   },
   {
    "fieldname": "chat",
    "fieldtype": "Link",
    "label": "Chat",
-   "options": "ERP AI Chat"
+   "options": "ERP AI Chat",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_links",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "message",
@@ -29,11 +82,14 @@
    "options": "ERP AI Message"
   },
   {
-   "fieldname": "category",
-   "fieldtype": "Select",
-   "label": "Category",
-   "options": "profanity\ninsult\nviolence\nharassment\nother",
-   "default": "other"
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "sec_excerpt",
+   "fieldtype": "Section Break",
+   "label": "Excerpt"
   },
   {
    "fieldname": "excerpt",
@@ -41,10 +97,9 @@
    "label": "Excerpt"
   },
   {
-   "fieldname": "score",
-   "fieldtype": "Float",
-   "label": "Score",
-   "default": 1
+   "fieldname": "sec_terms",
+   "fieldtype": "Section Break",
+   "label": "Matched Terms"
   },
   {
    "fieldname": "matched_terms",
@@ -61,11 +116,16 @@
    "delete": 1,
    "export": 1,
    "report": 1,
-   "share": 1
+   "share": 1,
+   "email": 1
   }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "user,category,chat"
 }

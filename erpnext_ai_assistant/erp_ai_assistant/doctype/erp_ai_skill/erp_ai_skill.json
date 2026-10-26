@@ -10,22 +10,49 @@
  "track_changes": 1,
  "fields": [
   {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Skill"
+  },
+  {
    "fieldname": "title",
    "fieldtype": "Data",
    "label": "Title",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
   },
   {
    "fieldname": "enabled",
    "fieldtype": "Check",
    "label": "Enabled",
-   "default": 1
+   "default": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "priority",
    "fieldtype": "Int",
    "label": "Priority",
-   "default": 10
+   "default": 10,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "sec_scope",
+   "fieldtype": "Section Break",
+   "label": "Scope"
   },
   {
    "fieldname": "routes",
@@ -33,14 +60,39 @@
    "label": "Routes"
   },
   {
+   "fieldname": "col_scope",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
    "fieldname": "doctypes",
    "fieldtype": "Small Text",
    "label": "DocTypes"
   },
   {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "sec_desc",
+   "fieldtype": "Section Break",
+   "label": "Description"
+  },
+  {
    "fieldname": "description",
    "fieldtype": "Markdown Editor",
    "label": "Description"
+  },
+  {
+   "fieldname": "tab_roles",
+   "fieldtype": "Tab Break",
+   "label": "Roles"
+  },
+  {
+   "fieldname": "sec_roles",
+   "fieldtype": "Section Break",
+   "label": "Roles"
   },
   {
    "fieldname": "roles",
@@ -58,12 +110,16 @@
    "delete": 1,
    "export": 1,
    "report": 1,
-   "share": 1
+   "share": 1,
+   "email": 1
   }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash",
- "title_field": "title"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "enabled,priority"
 }

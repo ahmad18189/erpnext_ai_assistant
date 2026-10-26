@@ -259,6 +259,22 @@
   flex-shrink: 0;
 }
 
+.erp-ai-open-link {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #0f1b2e;
+  color: #fff;
+  text-decoration: none;
+  font: 600 13px Cairo, system-ui, sans-serif;
+}
+
+.erp-ai-open-link:hover {
+  background: #1a2b45;
+  color: #fff;
+}
+
 .erp-ai-ack {
   border: 1px solid #fcd34d;
   background: #fffbeb;

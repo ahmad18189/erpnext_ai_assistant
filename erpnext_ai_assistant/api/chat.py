@@ -68,7 +68,27 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 		doc.save()
 		raise
 	doc.save()
-	return {"status": doc.status, "result": json.loads(doc.result_json or "{}")}
+	link = result.get("link") if isinstance(result, dict) else None
+	message = _created_message(action, dt, result)
+	if doc.chat and message:
+		from erpnext_ai_assistant.services.naming import as_title
+
+		frappe.get_doc(
+			{
+				"doctype": "ERP AI Message",
+				"title": as_title("ERP AI Message", message[:80]),
+				"chat": doc.chat,
+				"role": "assistant",
+				"content": message,
+				"status": "complete",
+			}
+		).insert(ignore_permissions=True)
+	return {
+		"status": doc.status,
+		"result": json.loads(doc.result_json or "{}"),
+		"link": link,
+		"message": message,
+	}
 
 
 @frappe.whitelist()
@@ -154,25 +174,88 @@ def clear_my_memory():
 	return {"ok": True}
 
 
+def _record_link(doctype: str, name: str) -> dict:
+	"""Desk route plus a CRM route when this DocType lives in the CRM SPA."""
+	from urllib.parse import quote
+
+	slug = frappe.scrub(doctype).replace("_", "-")
+	safe = quote(name, safe="")
+	crm_prefix = {
+		"CRM Lead": "/crm/leads/",
+		"CRM Deal": "/crm/deals/",
+		"Contact": "/crm/contacts/",
+		"CRM Organization": "/crm/organizations/",
+	}.get(doctype)
+	return {
+		"doctype": doctype,
+		"name": name,
+		"label": f"{doctype} {name}",
+		"desk_route": f"/desk/{slug}/{safe}",
+		"crm_route": (crm_prefix + safe) if crm_prefix else None,
+		"route": ["desk", slug, name],
+	}
+
+
+def _created_message(action: str, doctype: str, result: dict) -> str:
+	link = (result or {}).get("link") or {}
+	name = (result or {}).get("name") or link.get("name") or ""
+	path = link.get("desk_route") or ""
+	if action == "delete":
+		return f"Deleted {doctype} {result.get('deleted') or name}."
+	verb = {"create": "Created", "update": "Updated", "submit": "Submitted", "cancel": "Cancelled"}.get(
+		action, "Saved"
+	)
+	# Marker is turned into an Open button in the panel, including chat history.
+	crm = link.get("crm_route") or ""
+	marker = f"[[open:{path}|{doctype} {name}|{crm}]]" if path else ""
+	return f"{verb} {doctype} {name}.\n{marker}".strip()
+
+
 def _execute(action: str, doctype: str, name: str | None, payload: dict):
 	if action == "create":
-		doc = frappe.get_doc({"doctype": doctype, **(payload or {})})
+		payload = dict(payload or {})
+		note_text = (payload.pop("_note_text", None) or "").strip()
+		lead_name = payload.pop("_lead_name", None)
+		doc = frappe.get_doc({"doctype": doctype, **payload})
 		doc.insert()
-		return {"name": doc.name}
+		if doctype == "CRM Call Log" and doc.get("reference_doctype") and doc.get("reference_docname"):
+			if hasattr(doc, "link_with_reference_doc"):
+				doc.link_with_reference_doc(doc.reference_doctype, doc.reference_docname)
+				doc.save()
+		if doctype == "CRM Call Log" and note_text:
+			note = frappe.get_doc(
+				{
+					"doctype": "FCRM Note",
+					"title": "Call note",
+					"content": note_text,
+					"reference_doctype": "CRM Call Log",
+					"reference_docname": doc.name,
+				}
+			)
+			note.insert()
+			doc.note = note.name
+			doc.save()
+		link = _record_link(doctype, doc.name)
+		if doctype == "CRM Call Log" and doc.get("reference_doctype") == "CRM Lead" and doc.get("reference_docname"):
+			from urllib.parse import quote
+
+			link["crm_route"] = "/crm/leads/" + quote(doc.reference_docname, safe="")
+			link["label"] = f"Lead {lead_name or doc.reference_docname}"
+		return {"name": doc.name, "link": link}
 	if action == "update":
 		doc = frappe.get_doc(doctype, name)
 		doc.update(payload or {})
 		doc.save()
-		return {"name": doc.name}
+		return {"name": doc.name, "link": _record_link(doctype, doc.name)}
 	if action == "delete":
 		frappe.delete_doc(doctype, name)
 		return {"deleted": name}
 	if action == "submit":
 		doc = frappe.get_doc(doctype, name)
 		doc.submit()
-		return {"name": doc.name, "docstatus": doc.docstatus}
+		return {"name": doc.name, "docstatus": doc.docstatus, "link": _record_link(doctype, doc.name)}
 	if action == "cancel":
 		doc = frappe.get_doc(doctype, name)
 		doc.cancel()
-		return {"name": doc.name, "docstatus": doc.docstatus}
+		return {"name": doc.name, "docstatus": doc.docstatus, "link": _record_link(doctype, doc.name)}
 	frappe.throw(f"Unknown action {action}")

@@ -10,17 +10,47 @@
  "track_changes": 1,
  "fields": [
   {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Document"
+  },
+  {
    "fieldname": "title",
    "fieldtype": "Data",
    "label": "Title",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "source_type",
    "fieldtype": "Select",
    "label": "Source Type",
    "options": "documentation\nskill\nrdf\npolicy",
-   "default": "documentation"
+   "default": "documentation",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "sec_content",
+   "fieldtype": "Section Break",
+   "label": "Content"
   },
   {
    "fieldname": "content",
@@ -37,12 +67,16 @@
    "delete": 1,
    "export": 1,
    "report": 1,
-   "share": 1
+   "share": 1,
+   "email": 1
   }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash",
- "title_field": "title"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "source_type"
 }

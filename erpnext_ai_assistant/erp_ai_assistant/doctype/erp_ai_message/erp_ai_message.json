@@ -10,18 +10,65 @@
  "track_changes": 1,
  "fields": [
   {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Message"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
+  },
+  {
    "fieldname": "chat",
    "fieldtype": "Link",
    "label": "Chat",
    "options": "ERP AI Chat",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "role",
    "fieldtype": "Select",
    "label": "Role",
    "options": "user\nassistant\nsystem",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "complete\nrefused_work\nrefused_abuse\nblocked\nerror",
+   "default": "complete",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "sec_content",
+   "fieldtype": "Section Break",
+   "label": "Content"
   },
   {
    "fieldname": "content",
@@ -29,16 +76,14 @@
    "label": "Content"
   },
   {
+   "fieldname": "sec_reason",
+   "fieldtype": "Section Break",
+   "label": "Reasoning"
+  },
+  {
    "fieldname": "reasoning_json",
    "fieldtype": "JSON",
    "label": "Reasoning JSON"
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "complete\nrefused_work\nrefused_abuse\nblocked\nerror",
-   "default": "complete"
   }
  ],
  "permissions": [
@@ -65,5 +110,9 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "chat,role,status"
 }

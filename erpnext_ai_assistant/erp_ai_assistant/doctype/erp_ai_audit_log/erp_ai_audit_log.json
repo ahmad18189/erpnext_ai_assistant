@@ -7,25 +7,65 @@
  "issingle": 0,
  "istable": 0,
  "editable_grid": 0,
- "track_changes": 0,
+ "track_changes": 1,
  "fields": [
+  {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Event"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
+  },
   {
    "fieldname": "event_type",
    "fieldtype": "Data",
    "label": "Event Type",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
-   "options": "User"
+   "options": "User",
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
    "fieldname": "chat",
    "fieldtype": "Link",
    "label": "Chat",
-   "options": "ERP AI Chat"
+   "options": "ERP AI Chat",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "tab_payload",
+   "fieldtype": "Tab Break",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "sec_payload",
+   "fieldtype": "Section Break",
+   "label": "Payload"
   },
   {
    "fieldname": "payload_json",
@@ -42,11 +82,16 @@
    "delete": 1,
    "export": 1,
    "report": 1,
-   "share": 1
+   "share": 1,
+   "email": 1
   }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "event_type,user,chat"
 }

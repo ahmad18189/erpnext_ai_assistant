@@ -42,9 +42,12 @@ def reindex_knowledge():
 		doc = frappe.get_doc("ERP AI Knowledge Document", docname)
 		frappe.db.delete("ERP AI Knowledge Chunk", {"document": docname})
 		for i, chunk in enumerate(chunk_text(doc.content or "")):
+			from erpnext_ai_assistant.services.naming import as_title
+
 			frappe.get_doc(
 				{
 					"doctype": "ERP AI Knowledge Chunk",
+					"title": as_title("ERP AI Knowledge Chunk", f"{doc.title} {i + 1}"),
 					"document": docname,
 					"chunk_index": i,
 					"content": chunk,

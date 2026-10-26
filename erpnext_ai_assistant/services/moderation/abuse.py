@@ -224,9 +224,12 @@ def scan_abuse(message: str, chat: str | None = None) -> dict:
 			category = row.get("category") or category
 	if not matched:
 		return empty
+	from erpnext_ai_assistant.services.naming import as_title
+
 	event = frappe.get_doc(
 		{
 			"doctype": "ERP AI Abuse Event",
+			"title": as_title("ERP AI Abuse Event", f"{category}: {(message or '')[:60]}"),
 			"user": frappe.session.user,
 			"chat": chat,
 			"category": category,

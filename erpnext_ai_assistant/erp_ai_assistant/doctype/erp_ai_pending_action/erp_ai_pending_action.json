@@ -10,10 +10,86 @@
  "track_changes": 1,
  "fields": [
   {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Action"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "pending\napproved\nrejected\nexecuted\nfailed",
+   "default": "pending",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "action_type",
+   "fieldtype": "Select",
+   "label": "Action Type",
+   "options": "create\nupdate\ndelete\nsubmit\ncancel",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Data",
+   "label": "Target DocType",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "target_name",
+   "fieldtype": "Data",
+   "label": "Target Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sec_links",
+   "fieldtype": "Section Break",
+   "label": "Links"
+  },
+  {
    "fieldname": "chat",
    "fieldtype": "Link",
    "label": "Chat",
-   "options": "ERP AI Chat"
+   "options": "ERP AI Chat",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_links",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "message",
@@ -22,34 +98,14 @@
    "options": "ERP AI Message"
   },
   {
-   "fieldname": "user",
-   "fieldtype": "Link",
-   "label": "User",
-   "options": "User",
-   "reqd": 1
+   "fieldname": "tab_payload",
+   "fieldtype": "Tab Break",
+   "label": "Payload"
   },
   {
-   "fieldname": "action_type",
-   "fieldtype": "Select",
-   "label": "Action Type",
-   "options": "create\nupdate\ndelete\nsubmit\ncancel",
-   "reqd": 1
-  },
-  {
-   "fieldname": "target_doctype",
-   "fieldtype": "Data",
-   "label": "Target DocType",
-   "reqd": 1
-  },
-  {
-   "fieldname": "target_name",
-   "fieldtype": "Data",
-   "label": "Target Name"
-  },
-  {
-   "fieldname": "payload_json",
-   "fieldtype": "JSON",
-   "label": "Payload JSON"
+   "fieldname": "sec_summary",
+   "fieldtype": "Section Break",
+   "label": "Summary"
   },
   {
    "fieldname": "summary",
@@ -57,33 +113,58 @@
    "label": "Summary"
   },
   {
-   "fieldname": "acknowledgment_text",
-   "fieldtype": "Long Text",
-   "label": "Acknowledgment Text"
+   "fieldname": "sec_payload",
+   "fieldtype": "Section Break",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "payload_json",
+   "fieldtype": "JSON",
+   "label": "Payload JSON"
+  },
+  {
+   "fieldname": "tab_resolution",
+   "fieldtype": "Tab Break",
+   "label": "Resolution"
+  },
+  {
+   "fieldname": "sec_ack",
+   "fieldtype": "Section Break",
+   "label": "Acknowledgment"
   },
   {
    "fieldname": "acknowledged",
    "fieldtype": "Check",
    "label": "Acknowledged",
-   "default": 0
+   "in_list_view": 1
   },
   {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "pending\napproved\nrejected\nexecuted\nfailed",
-   "default": "pending"
+   "fieldname": "acknowledgment_text",
+   "fieldtype": "Long Text",
+   "label": "Acknowledgment Text"
+  },
+  {
+   "fieldname": "col_res",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "resolved_by",
    "fieldtype": "Link",
    "label": "Resolved By",
-   "options": "User"
+   "options": "User",
+   "in_list_view": 1
   },
   {
    "fieldname": "resolved_at",
    "fieldtype": "Datetime",
-   "label": "Resolved At"
+   "label": "Resolved At",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sec_result",
+   "fieldtype": "Section Break",
+   "label": "Result"
   },
   {
    "fieldname": "result_json",
@@ -115,5 +196,9 @@
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "user,status,action_type,target_doctype"
 }

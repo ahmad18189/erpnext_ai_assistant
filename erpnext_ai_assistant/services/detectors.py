@@ -29,9 +29,21 @@ COMPANY_HINT = re.compile(
 )
 APP_HINT = re.compile(r"\b(app|module|installed|تطبيق)\b", re.I)
 CREATE_LEAD = re.compile(
-	r"(create|add|new)\s+(a\s+|new\s+)?lead|إنشاء\s*(عميل|ليد)|أضف\s*(عميل|ليد)|عميل\s*جديد",
+	r"(create|add|make)\s+(a\s+|new\s+|me\s+)?(a\s+)?lead"
+	r"|new\s+lead"
+	r"|can you create"
+	r"|make you create"
+	r"|إنشاء\s*(عميل|ليد)"
+	r"|أضف\s*(عميل|ليد)"
+	r"|عميل\s*جديد",
 	re.I,
 )
+CREATE_FOLLOWUP = re.compile(
+	r"how (to|can|do)|how to do|make you create|do it|doit|can you add|add it|why not|permission|role|"
+	r"كيف|سويها|اعملها|اعملي|ليش|صلاح",
+	re.I,
+)
+CREATE_CALL = re.compile(r"\bcalls?\b|\bcalle\b|مكالم", re.I)
 
 
 def gather_context(
@@ -40,6 +52,7 @@ def gather_context(
 	lang: str,
 	chat_id: str | None = None,
 	session_facts: dict | None = None,
+	recent_user_texts: list[str] | None = None,
 ) -> dict:
 	"""Return {tool_parts, charts, steps, pending}."""
 	msg = message or ""
@@ -56,13 +69,22 @@ def gather_context(
 		steps.append(s)
 		tools.publish_step(chat_id or "", s)
 
-	# --- Create / update lead (Pending Action — never silent write) ---
-	if CREATE_LEAD.search(msg) or (
-		facts.get("pending_intent") == "create_lead"
-		and re.search(r"(name|email|اسم|بريد|@)", msg_l)
-	):
+	# --- Add a call on a lead (before generic lead-create) ---
+	recent = recent_user_texts or []
+	if _wants_call(msg, recent):
+		add_step("write", "اقتراح مكالمة", "Propose call", "propose_write", "running")
+		pending = _propose_create_call(msg, recent, chat_id=chat_id, lang=lang)
+		tool_parts.append(
+			"WRITE PROPOSAL (prepare the call; do not say you cannot create it):\n"
+			+ frappe.as_json(pending)[:4000]
+		)
+		add_step("write", "اقتراح مكالمة", "Propose call", "propose_write")
+
+	# --- Create lead (Pending Action — never silent write) ---
+	create_source = None if pending else _create_lead_source(msg, facts, recent)
+	if create_source:
 		add_step("write", "اقتراح إنشاء عميل", "Propose create lead", "propose_write", "running")
-		pending = _propose_create_lead(msg, chat_id=chat_id, lang=lang)
+		pending = _propose_create_lead(create_source, chat_id=chat_id, lang=lang)
 		tool_parts.append(
 			"WRITE PROPOSAL (do NOT say ضمن صلاحياتك; explain the proposal and ask user to Approve in the card):\n"
 			+ frappe.as_json(pending)[:4000]
@@ -215,7 +237,9 @@ def _parse_create_lead(message: str) -> dict:
 		)
 		if m and m.group(1).lower() not in {"name", "with", "email", "for"}:
 			name = m.group(1).strip()
-	parts = (name or "Lead").split()
+	if not name:
+		return {"email": email} if email else {}
+	parts = name.split()
 	first = parts[0]
 	last = " ".join(parts[1:]) if len(parts) > 1 else ""
 	payload = {
@@ -229,6 +253,160 @@ def _parse_create_lead(message: str) -> dict:
 	if email:
 		payload["email"] = email
 	return payload
+
+
+def _create_lead_source(message: str, facts: dict, recent: list[str]) -> str | None:
+	"""Pick the text that should drive a create-lead proposal, including short follow-ups."""
+	msg = message or ""
+	prior_create = facts.get("pending_intent") == "create_lead" or any(
+		CREATE_LEAD.search(t or "") for t in recent
+	)
+	if not (
+		CREATE_LEAD.search(msg)
+		or (prior_create and CREATE_FOLLOWUP.search(msg))
+		or (prior_create and re.search(r"(name|email|اسم|بريد|@)", msg, re.I))
+	):
+		return None
+	# Prefer the message that actually contains a name or email
+	for candidate in [msg, *recent]:
+		parsed = _parse_create_lead(candidate or "")
+		if parsed.get("first_name") or parsed.get("email"):
+			return candidate
+	return msg
+
+
+def _wants_call(message: str, recent: list[str]) -> bool:
+	if CREATE_CALL.search(message or ""):
+		return True
+	blob = "\n".join(recent or [])
+	return bool(CREATE_CALL.search(blob) and CREATE_FOLLOWUP.search(message or ""))
+
+
+def _call_minutes_ago(text: str) -> int:
+	raw = text or ""
+	m = re.search(r"(\d+)\s*(min|minute|دق)", raw, re.I)
+	if m:
+		return int(m.group(1))
+	words = {"one": 1, "two": 2, "three": 3, "five": 5, "ten": 10, "خمس": 5, "خمسة": 5}
+	for word, n in words.items():
+		if re.search(rf"\b{word}\b", raw, re.I) and re.search(r"min|minute|دق|before|قبل", raw, re.I):
+			return n
+	return 0
+
+
+def _call_note(text: str) -> str:
+	m = re.search(r"(?:note|not|ملاحظة)\s+of\s+(.+)", text or "", re.I)
+	if not m:
+		return ""
+	note = m.group(1).strip(" .")
+	note = re.split(r"\b(to the lead|on the lead|for the lead)\b", note, maxsplit=1, flags=re.I)[0].strip()
+	return note[:500]
+
+
+def _find_lead_for_call(text: str) -> dict | None:
+	m = re.search(r"lead\s+([A-Za-z0-9@._+-]{2,})", text or "", re.I)
+	token = m.group(1) if m else ""
+	if not token:
+		m = re.search(r"[\w.+-]+@[\w.-]+\.\w+", text or "")
+		token = m.group(0) if m else ""
+	if not token or not frappe.db.exists("DocType", "CRM Lead"):
+		return None
+	digits = "".join(re.findall(r"\d{3,}", token))
+	alpha = re.sub(r"[^A-Za-z\u0600-\u06FF]", "", token)
+	filters = [
+		["lead_name", "like", f"%{token}%"],
+		["email", "like", f"%{token}%"],
+		["name", "like", f"%{token}%"],
+	]
+	if digits:
+		filters.append(["email", "like", f"%{digits}%"])
+	if alpha and alpha.lower() != token.lower():
+		filters.append(["lead_name", "like", f"%{alpha}%"])
+	rows = tools.tool_erp_query(
+		"CRM Lead",
+		or_filters=filters,
+		fields=["name", "lead_name", "email", "mobile_no"],
+		limit=8,
+	)
+	if not rows:
+		return None
+	if digits:
+		scored = [r for r in rows if digits in (r.get("email") or "") or digits in (r.get("name") or "")]
+		if len(scored) == 1:
+			return scored[0]
+		if scored:
+			rows = scored
+	if alpha:
+		named = [r for r in rows if alpha.lower() in (r.get("lead_name") or "").lower()]
+		if len(named) == 1:
+			return named[0]
+	return rows[0] if len(rows) == 1 else None
+
+
+def _propose_create_call(message: str, recent: list[str], chat_id: str | None, lang: str) -> dict:
+	if not frappe.db.exists("DocType", "CRM Call Log"):
+		return {"error": "CRM Call Log missing", "status": "failed", "message_en": "CRM Call Log is not installed.", "message_ar": "سجل المكالمات غير متوفر."}
+	if not frappe.has_permission("CRM Call Log", "create"):
+		return {
+			"error": "no_create_permission",
+			"status": "failed",
+			"message_en": "You do not have permission to create CRM Call Log.",
+			"message_ar": "لا تملك صلاحية إنشاء سجل مكالمة.",
+		}
+	blob = "\n".join([message or "", *(recent or [])])
+	lead = _find_lead_for_call(blob)
+	if not lead:
+		return {
+			"error": "missing_lead",
+			"status": "need_input",
+			"message_en": "Tell me which lead this call is for (name or email).",
+			"message_ar": "حدد العميل المحتمل لهذه المكالمة بالاسم أو البريد.",
+		}
+	minutes = _call_minutes_ago(blob)
+	from frappe.utils import add_to_date, now_datetime
+
+	started = add_to_date(now_datetime(), minutes=-minutes) if minutes else now_datetime()
+	phone = (lead.get("mobile_no") or "").strip() or "manual"
+	note = _call_note(blob)
+	payload = {
+		"type": "Outgoing",
+		"status": "Completed",
+		"telephony_medium": "Manual",
+		"from": phone,
+		"to": phone,
+		"start_time": str(started),
+		"duration": 60,
+		"caller": frappe.session.user,
+		"reference_doctype": "CRM Lead",
+		"reference_docname": lead.get("name"),
+		"_note_text": note,
+		"_lead_name": lead.get("lead_name") or lead.get("name"),
+	}
+	who = payload["_lead_name"]
+	if lang == "ar":
+		summary = f"إضافة مكالمة صادرة مكتملة للعميل {who} ({lead.get('name')})"
+		if note:
+			summary += f" — الملاحظة: {note}"
+		if minutes:
+			summary += f" — قبل {minutes} دقائق"
+	else:
+		summary = f"Add a completed outgoing call on lead {who} ({lead.get('name')})"
+		if note:
+			summary += f" — note: {note}"
+		if minutes:
+			summary += f" — {minutes} minutes ago"
+	if not chat_id:
+		return {"error": "missing_chat", "status": "failed", "summary": summary}
+	try:
+		return tools.propose_write(
+			chat=chat_id,
+			action_type="create",
+			target_doctype="CRM Call Log",
+			payload=payload,
+			summary=summary,
+		)
+	except Exception as e:
+		return {"error": str(e), "status": "failed", "message_en": str(e), "message_ar": str(e)}
 
 
 def _propose_create_lead(message: str, chat_id: str | None, lang: str) -> dict:

@@ -33,6 +33,13 @@ OFF_WORK_PATTERNS = [
 
 WORK_CUES = [
 	r"\blead\b",
+	r"\bcalls?\b",
+	r"\bcalle\b",
+	r"مكالم",
+	r"\bcreate\b",
+	r"\badd\b",
+	r"إنشاء",
+	r"أضف",
 	r"\bdeal\b",
 	r"\bcrm\b",
 	r"\binvoice\b",

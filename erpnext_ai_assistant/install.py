@@ -18,6 +18,7 @@ def after_install():
 
 
 def after_migrate():
+	_backfill_titles()
 	_ensure_settings()
 	_seed_persona()
 	_seed_skills()
@@ -35,6 +36,28 @@ def after_migrate():
 		reindex_knowledge()
 	except Exception:
 		frappe.log_error(title="ERP AI RAG reindex on migrate")
+
+
+def _backfill_titles():
+	"""Fill the Title field on older hash-named rows so list view has a label."""
+	jobs = [
+		("ERP AI Chat", "COALESCE(NULLIF(title, ''), LEFT(name, 40))"),
+		("ERP AI Message", "COALESCE(NULLIF(title, ''), CONCAT(IFNULL(role, 'message'), ': ', LEFT(IFNULL(content, name), 60)))"),
+		("ERP AI Memory", "COALESCE(NULLIF(title, ''), CONCAT(IFNULL(scope, 'user'), ': ', IFNULL(`key`, name)))"),
+		("ERP AI Knowledge Chunk", "COALESCE(NULLIF(title, ''), CONCAT('Chunk ', IFNULL(chunk_index, 0)))"),
+		("ERP AI Pending Action", "COALESCE(NULLIF(title, ''), CONCAT(IFNULL(action_type, 'action'), ' ', IFNULL(target_doctype, '')))"),
+		("ERP AI Abuse Event", "COALESCE(NULLIF(title, ''), CONCAT(IFNULL(category, 'event'), ': ', LEFT(IFNULL(excerpt, name), 40)))"),
+		("ERP AI Audit Log", "COALESCE(NULLIF(title, ''), IFNULL(event_type, name))"),
+		("ERP AI Generated Chart", "COALESCE(NULLIF(title, ''), IFNULL(chart_type, 'Chart'))"),
+		("ERP AI Generated Query", "COALESCE(NULLIF(title, ''), CONCAT(IFNULL(query_type, 'Query'), ' ', IFNULL(doctype_name, '')))"),
+		("ERP AI Metadata Cache", "COALESCE(NULLIF(title, ''), CONCAT(IFNULL(kind, 'cache'), ': ', IFNULL(ref_name, name)))"),
+	]
+	for doctype, expr in jobs:
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		if not frappe.db.has_column(doctype, "title"):
+			continue
+		frappe.db.sql(f"update `tab{doctype}` set title = {expr} where ifnull(title, '') = ''")
 
 
 def _ensure_settings():

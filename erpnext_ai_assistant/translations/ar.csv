@@ -9,12 +9,6 @@ Approve,موافقة
 Reject,رفض
 Rebuild RDF,إعادة بناء RDF
 Reindex RAG,إعادة فهرسة RAG
-OpenAI API Key,مفتاح OpenAI
-OpenAI Base URL,رابط OpenAI
-Work Only,عمل فقط
-Blocked Users,المستخدمون المحظورون
-Overlay Pages,صفحات الظهور
-Active Persona,الشخصية النشطة
 ERP AI Settings,إعدادات مساعد ERP
 ERP AI Chat,محادثة مساعد ERP
 ERP AI Message,رسالة مساعد ERP
@@ -23,3 +17,176 @@ ERP AI Persona,شخصية مساعد ERP
 ERP AI Memory,ذاكرة مساعد ERP
 ERP AI Abuse Event,حدث إساءة مساعد ERP
 ERP AI Pending Action,إجراء معلّق لمساعد ERP
+ERP AI Audit Log,سجل تدقيق مساعد ERP
+ERP AI Knowledge Document,مستند معرفة مساعد ERP
+ERP AI Knowledge Chunk,مقطع معرفة مساعد ERP
+ERP AI Generated Chart,مخطط مساعد ERP
+ERP AI Generated Query,استعلام مساعد ERP
+ERP AI Metadata Cache,ذاكرة بيانات وصفية لمساعد ERP
+ERP AI Skill Role,دور مهارة مساعد ERP
+ERP AI Persona Role,دور شخصية مساعد ERP
+ERP AI Settings Abuse Term,مصطلح إساءة لإعدادات المساعد
+ERP AI Settings Notify Role,دور إشعار لإعدادات المساعد
+ERP AI Settings Blocked User,مستخدم محظور لإعدادات المساعد
+ERP AI Settings Overlay Page,صفحة ظهور لإعدادات المساعد
+Title,العنوان
+User,المستخدم
+Route,المسار
+Status,الحالة
+Language,اللغة
+Context Summary,ملخص السياق
+Session Facts JSON,حقائق الجلسة
+Role,الدور
+Content,المحتوى
+Reasoning JSON,منطق الإجابة
+Enabled,مفعّل
+Priority,الأولوية
+Routes,المسارات
+DocTypes,أنواع المستندات
+Description,الوصف
+Roles,الأدوار
+Persona Name,اسم الشخصية
+Panel Label,عنوان اللوحة
+Panel Label AR,عنوان اللوحة بالعربية
+Tone Instructions,تعليمات الأسلوب
+Default Language,اللغة الافتراضية
+Avatar,الصورة
+Scope,النطاق
+Key,المفتاح
+Value,القيمة
+Source Chat,المحادثة المصدر
+Expires On,تاريخ الانتهاء
+Source Type,نوع المصدر
+Document,المستند
+Chunk Index,رقم المقطع
+Qdrant Point Id,معرّف نقطة البحث
+Action Type,نوع الإجراء
+Target DocType,نوع المستند المستهدف
+Target Name,اسم السجل المستهدف
+Payload JSON,بيانات الإجراء
+Summary,الملخص
+Acknowledgment Text,نص الإقرار
+Acknowledged,تم الإقرار
+Resolved By,أُغلق بواسطة
+Resolved At,وقت الإغلاق
+Result JSON,نتيجة التنفيذ
+Category,التصنيف
+Excerpt,مقتطف
+Score,الدرجة
+Matched Terms,العبارات المطابقة
+Event Type,نوع الحدث
+Chart Type,نوع المخطط
+Message,الرسالة
+Query Type,نوع الاستعلام
+DocType Name,اسم نوع المستند
+Kind,النوع
+Ref Name,الاسم المرجعي
+Content Hash,بصمة المحتوى
+Synced At,وقت المزامنة
+Model,النموذج
+Persona,الشخصية
+Memory,الذاكرة
+Moderation,المراجعة
+Access,الوصول
+Overlay,الظهور
+Details,التفاصيل
+OpenAI,أوبن إيه آي
+OpenAI API Key,مفتاح أوبن إيه آي
+OpenAI Base URL,رابط أوبن إيه آي
+Temperature,درجة العشوائية
+Max Tokens,الحد الأقصى للرموز
+Active Persona,الشخصية النشطة
+Work Scope,نطاق العمل
+Work Only,عمل فقط
+Refusal Text AR,نص الرفض بالعربية
+Refusal Text EN,نص الرفض بالإنجليزية
+Memory Enabled,تفعيل الذاكرة
+Max Memory Items Per User,حد عناصر الذاكرة لكل مستخدم
+Thresholds,الحدود
+Moderation Enabled,تفعيل المراجعة
+Abuse Threshold Count,عدد مرات الإساءة للحظر
+Abuse Threshold Days,أيام احتساب الإساءة
+Abuse Score Limit,حد درجة الإساءة
+Block Duration Hours,مدة الحظر بالساعات
+Allow Pending Writes,السماح بالكتابة بعد الموافقة
+Notify Emails,بريد الإشعار
+Notifications,الإشعارات
+Notify Roles,أدوار الإشعار
+Abuse Terms,عبارات الإساءة
+Blocked Users,المستخدمون المحظورون
+Overlay Pages,صفحات الظهور
+Term,العبارة
+Path Pattern,نمط المسار
+Label,التسمية
+Host Hint,نوع الواجهة
+Blocked On,تاريخ الحظر
+Reason,السبب
+Blocked Until,محظور حتى
+Cleared On,تاريخ رفع الحظر
+Cleared By,رفع الحظر بواسطة
+Skill,المهارة
+Tone,الأسلوب
+Action,الإجراء
+Links,الروابط
+Payload,البيانات
+Resolution,الإغلاق
+Acknowledgment,الإقرار
+Result,النتيجة
+Event,الحدث
+Query,الاستعلام
+Cache,الذاكرة المؤقتة
+Chunk,المقطع
+Context,السياق
+Session Facts,حقائق الجلسة
+Source,المصدر
+Open,مفتوحة
+Closed,مغلقة
+profanity,ألفاظ نابية
+insult,إهانة
+violence,عنف
+harassment,تحرش
+other,أخرى
+user,مستخدم
+assistant,المساعد
+system,النظام
+complete,مكتمل
+refused_work,خارج نطاق العمل
+refused_abuse,مرفوض للإساءة
+blocked,محظور
+error,خطأ
+documentation,توثيق
+skill,مهارة
+rdf,بيانات وصفية
+policy,سياسة
+company,الشركة
+both,الاثنان
+ar,العربية
+en,الإنجليزية
+pending,بانتظار الموافقة
+approved,موافق عليه
+rejected,مرفوض
+executed,منفّذ
+failed,فشل
+create,إنشاء
+update,تعديل
+delete,حذف
+submit,اعتماد
+cancel,إلغاء
+bar,أعمدة
+line,خط
+pie,دائري
+kpi,مؤشر
+doctype,نوع مستند
+report,تقرير
+dashboard,لوحة
+workspace,مساحة عمل
+print_format,تنسيق طباعة
+crm_spa,واجهة CRM
+desk,مكتب العمل
+custom,مخصص
+Chart,مخطط
+Reasoning,المنطق
+Stored as Password. Prefer Desk Settings over committing secrets.,يُحفظ ككلمة مرور. لا تضع المفتاح في المستودع.
+Default https://api.openai.com/v1,الافتراضي https://api.openai.com/v1
+"OpenAI model id, e.g. gpt-4o-mini",معرّف النموذج، مثل gpt-4o-mini
+Rolling conversation memory for follow-ups,ذاكرة المحادثة للمتابعات

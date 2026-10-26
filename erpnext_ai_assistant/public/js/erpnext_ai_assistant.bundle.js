@@ -18,6 +18,8 @@
       empty: "ابدأ بسؤال متعلق بالعمل على هذا الموقع.",
       blocked: "تم حظر المساعد. تواصل مع مديرك.",
       ackTitle: "تأكيد الكتابة",
+      openRecord: "فتح السجل",
+      created: "تم الحفظ.",
       ackCheck: "راجعت التغيير وأوافق على تنفيذه",
       approve: "موافقة",
       reject: "رفض",
@@ -41,6 +43,8 @@
       empty: "Ask a work-related question about this site.",
       blocked: "Assistant blocked. Contact your manager.",
       ackTitle: "Confirm write",
+      openRecord: "Open record",
+      created: "Saved.",
       ackCheck: "I reviewed and authorize this change",
       approve: "Approve",
       reject: "Reject",
@@ -162,7 +166,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai9";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai10";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -338,6 +342,45 @@
     body.appendChild(el("div", "erp-ai-empty", t("empty")));
   }
 
+  function parseOpenLinks(content) {
+    var links = [];
+    var text = String(content || "").replace(
+      /\[\[open:([^\]|]+)\|([^\]|]+)(?:\|([^\]]*))?\]\]/g,
+      function (_m, path, label, crm) {
+        links.push({ desk_route: path, label: label, crm_route: crm || null });
+        return "";
+      }
+    );
+    return { text: text.replace(/\n+$/, "").trim(), links: links };
+  }
+
+  function openRecordButton(link) {
+    var a = el("a", "erp-ai-open-link");
+    a.href = (location.pathname.indexOf("/crm") === 0 && link.crm_route) || link.desk_route || "#";
+    a.textContent = link.label || t("openRecord");
+    a.addEventListener("click", function (ev) {
+      var onCrm = (location.pathname || "").indexOf("/crm") === 0;
+      var path = (onCrm && link.crm_route) || link.desk_route;
+      if (!path) return;
+      if (onCrm && link.crm_route) {
+        window.location.assign(link.crm_route);
+        ev.preventDefault();
+        return;
+      }
+      if (window.frappe && frappe.set_route && link.route && link.route.length) {
+        ev.preventDefault();
+        frappe.set_route.apply(frappe, link.route);
+        return;
+      }
+      if (window.frappe && frappe.set_route && path.indexOf("/desk/") === 0) {
+        ev.preventDefault();
+        var bits = path.split("/").filter(Boolean);
+        frappe.set_route.apply(frappe, bits);
+      }
+    });
+    return a;
+  }
+
   function appendMsg(role, content, extra) {
     var body = document.getElementById("erp-ai-body");
     if (!body) return;
@@ -345,10 +388,17 @@
     if (empty) empty.remove();
     var wrap = el("div", "erp-ai-msg " + role);
     if (extra && extra.thinking) wrap.appendChild(extra.thinking);
+    var parsed = parseOpenLinks(content || "");
     var bubble = el("div", "bubble");
-    bubble.textContent = content || "";
-    bubble.setAttribute("dir", hasArabic(content) ? "rtl" : "auto");
+    bubble.textContent = parsed.text;
+    bubble.setAttribute("dir", hasArabic(parsed.text) ? "rtl" : "auto");
     wrap.appendChild(bubble);
+    (parsed.links || []).forEach(function (link) {
+      wrap.appendChild(openRecordButton(link));
+    });
+    if (extra && extra.link && (content || "").indexOf("[[open:") === -1) {
+      wrap.appendChild(openRecordButton(extra.link));
+    }
     if (extra && extra.charts) {
       extra.charts.forEach(function (c) {
         wrap.appendChild(renderChart(c));
@@ -762,7 +812,9 @@
         acknowledgment_text: t("ackCheck"),
         acknowledged: 1,
       }).then(function (res) {
-        appendMsg("assistant", JSON.stringify(res), null);
+        appendMsg("assistant", (res && res.message) || t("created"), {
+          link: res && res.link,
+        });
       });
     });
     no.addEventListener("click", function () {

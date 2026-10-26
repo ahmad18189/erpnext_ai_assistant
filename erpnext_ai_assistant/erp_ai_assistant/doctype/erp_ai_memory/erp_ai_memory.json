@@ -10,10 +10,36 @@
  "track_changes": 1,
  "fields": [
   {
+   "fieldname": "tab_details",
+   "fieldtype": "Tab Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "sec_main",
+   "fieldtype": "Section Break",
+   "label": "Memory"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "in_preview": 1
+  },
+  {
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
-   "options": "User"
+   "options": "User",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "col_main",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "scope",
@@ -21,13 +47,41 @@
    "label": "Scope",
    "options": "user\ncompany",
    "default": "user",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
    "fieldname": "key",
    "fieldtype": "Data",
    "label": "Key",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "expires_on",
+   "fieldtype": "Date",
+   "label": "Expires On",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "sec_value",
+   "fieldtype": "Section Break",
+   "label": "Value"
   },
   {
    "fieldname": "value",
@@ -35,21 +89,15 @@
    "label": "Value"
   },
   {
+   "fieldname": "sec_source",
+   "fieldtype": "Section Break",
+   "label": "Source"
+  },
+  {
    "fieldname": "source_chat",
    "fieldtype": "Link",
    "label": "Source Chat",
    "options": "ERP AI Chat"
-  },
-  {
-   "fieldname": "expires_on",
-   "fieldtype": "Date",
-   "label": "Expires On"
-  },
-  {
-   "fieldname": "enabled",
-   "fieldtype": "Check",
-   "label": "Enabled",
-   "default": 1
   }
  ],
  "permissions": [
@@ -63,18 +111,14 @@
    "report": 1,
    "share": 1,
    "email": 1
-  },
-  {
-   "role": "All",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 0,
-   "if_owner": 1
   }
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
  "links": [],
- "autoname": "hash"
+ "autoname": "field:title",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "user,scope,key,enabled"
 }

@@ -10,7 +10,12 @@
  "track_changes": 1,
  "fields": [
   {
-   "fieldname": "sb_llm",
+   "fieldname": "tab_model",
+   "fieldtype": "Tab Break",
+   "label": "Model"
+  },
+  {
+   "fieldname": "sec_model",
    "fieldtype": "Section Break",
    "label": "OpenAI"
   },
@@ -28,9 +33,9 @@
    "description": "Default https://api.openai.com/v1"
   },
   {
-   "fieldname": "column_break_llm",
+   "fieldname": "col_model",
    "fieldtype": "Column Break",
-   "label": "Column Break Llm"
+   "label": ""
   },
   {
    "fieldname": "api_key",
@@ -58,9 +63,14 @@
    "default": 2048
   },
   {
-   "fieldname": "sb_persona",
-   "fieldtype": "Section Break",
+   "fieldname": "tab_persona",
+   "fieldtype": "Tab Break",
    "label": "Persona"
+  },
+  {
+   "fieldname": "sec_persona",
+   "fieldtype": "Section Break",
+   "label": "Active Persona"
   },
   {
    "fieldname": "active_persona",
@@ -69,7 +79,7 @@
    "options": "ERP AI Persona"
   },
   {
-   "fieldname": "sb_scope",
+   "fieldname": "sec_scope",
    "fieldtype": "Section Break",
    "label": "Work Scope"
   },
@@ -78,6 +88,11 @@
    "fieldtype": "Check",
    "label": "Work Only",
    "default": 1
+  },
+  {
+   "fieldname": "col_scope",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "refusal_text_ar",
@@ -92,7 +107,12 @@
    "default": "I am a workplace ERP assistant only. Please ask a work-related question about this site."
   },
   {
-   "fieldname": "sb_memory",
+   "fieldname": "tab_memory",
+   "fieldtype": "Tab Break",
+   "label": "Memory"
+  },
+  {
+   "fieldname": "sec_memory",
    "fieldtype": "Section Break",
    "label": "Memory"
   },
@@ -103,15 +123,25 @@
    "default": 1
   },
   {
+   "fieldname": "col_memory",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
    "fieldname": "max_memory_items_per_user",
    "fieldtype": "Int",
    "label": "Max Memory Items Per User",
    "default": 20
   },
   {
-   "fieldname": "sb_mod",
-   "fieldtype": "Section Break",
+   "fieldname": "tab_moderation",
+   "fieldtype": "Tab Break",
    "label": "Moderation"
+  },
+  {
+   "fieldname": "sec_mod",
+   "fieldtype": "Section Break",
+   "label": "Thresholds"
   },
   {
    "fieldname": "moderation_enabled",
@@ -132,6 +162,11 @@
    "default": 30
   },
   {
+   "fieldname": "col_mod",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
    "fieldname": "abuse_score_limit",
    "fieldtype": "Float",
    "label": "Abuse Score Limit",
@@ -150,12 +185,7 @@
    "default": 1
   },
   {
-   "fieldname": "notify_emails",
-   "fieldtype": "Small Text",
-   "label": "Notify Emails"
-  },
-  {
-   "fieldname": "sb_terms",
+   "fieldname": "sec_terms",
    "fieldtype": "Section Break",
    "label": "Abuse Terms"
   },
@@ -166,9 +196,19 @@
    "options": "ERP AI Settings Abuse Term"
   },
   {
-   "fieldname": "sb_notify",
+   "fieldname": "tab_access",
+   "fieldtype": "Tab Break",
+   "label": "Access"
+  },
+  {
+   "fieldname": "sec_notify",
    "fieldtype": "Section Break",
-   "label": "Notify Roles"
+   "label": "Notifications"
+  },
+  {
+   "fieldname": "notify_emails",
+   "fieldtype": "Small Text",
+   "label": "Notify Emails"
   },
   {
    "fieldname": "notify_roles",
@@ -177,7 +217,7 @@
    "options": "ERP AI Settings Notify Role"
   },
   {
-   "fieldname": "sb_blocked",
+   "fieldname": "sec_blocked",
    "fieldtype": "Section Break",
    "label": "Blocked Users"
   },
@@ -188,7 +228,12 @@
    "options": "ERP AI Settings Blocked User"
   },
   {
-   "fieldname": "sb_overlay",
+   "fieldname": "tab_overlay",
+   "fieldtype": "Tab Break",
+   "label": "Overlay"
+  },
+  {
+   "fieldname": "sec_overlay",
    "fieldtype": "Section Break",
    "label": "Overlay Pages"
   },

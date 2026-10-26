@@ -182,9 +182,12 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 	settings = frappe.get_single("ERP AI Settings")
 	if not settings.allow_pending_writes:
 		frappe.throw("Writes are disabled in ERP AI Settings")
+	from erpnext_ai_assistant.services.naming import as_title
+
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Pending Action",
+			"title": as_title("ERP AI Pending Action", summary or f"{action_type} {target_doctype}"),
 			"chat": chat,
 			"message": message,
 			"user": frappe.session.user,
