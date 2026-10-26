@@ -103,7 +103,16 @@
     }).then(function (r) {
       return r.json().then(function (j) {
         if (j.exc_type === "CSRFTokenError" || j.exc || (r.status >= 400 && j.message == null)) {
-          throw new Error(j.exc_type || j.exc || t("error"));
+          var detail = "";
+          try {
+            var server = JSON.parse(j._server_messages || "[]");
+            if (server && server.length) {
+              var first = typeof server[0] === "string" ? JSON.parse(server[0]) : server[0];
+              detail = (first && (first.message || first.title)) || "";
+            }
+          } catch (e) {}
+          detail = String(detail).replace(/<[^>]+>/g, "");
+          throw new Error(detail || j.exc_type || j.exception || t("error"));
         }
         return j.message != null ? j.message : j;
       });
@@ -166,7 +175,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai10";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai11";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }

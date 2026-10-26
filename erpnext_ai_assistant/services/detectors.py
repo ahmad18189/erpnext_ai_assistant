@@ -366,7 +366,7 @@ def _propose_create_call(message: str, recent: list[str], chat_id: str | None, l
 	from frappe.utils import add_to_date, now_datetime
 
 	started = add_to_date(now_datetime(), minutes=-minutes) if minutes else now_datetime()
-	phone = (lead.get("mobile_no") or "").strip() or "manual"
+	phone = (lead.get("mobile_no") or "").strip()
 	note = _call_note(blob)
 	payload = {
 		"type": "Outgoing",

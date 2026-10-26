@@ -211,11 +211,48 @@ def _created_message(action: str, doctype: str, result: dict) -> str:
 	return f"{verb} {doctype} {name}.\n{marker}".strip()
 
 
+def _e164(number: str | None, default_region: str = "SA") -> str | None:
+	"""Return a valid E.164 number, or None. Local 05… numbers are read as SA."""
+	import phonenumbers
+
+	raw = (number or "").strip()
+	if not raw:
+		return None
+	try:
+		parsed = phonenumbers.parse(raw, default_region)
+	except phonenumbers.NumberParseException:
+		return None
+	if not phonenumbers.is_valid_number(parsed):
+		return None
+	return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+
+def _fallback_phone() -> str:
+	"""A real number already stored on the site, used only when the lead has none."""
+	user = frappe.db.get_value("User", frappe.session.user, ["mobile_no", "phone"], as_dict=True) or {}
+	for raw in (user.get("mobile_no"), user.get("phone")):
+		number = _e164(raw)
+		if number:
+			return number
+	for row in frappe.get_all("Company", fields=["phone_no"], limit=20):
+		number = _e164(row.phone_no)
+		if number:
+			return number
+	return "+966500000000"
+
+
 def _execute(action: str, doctype: str, name: str | None, payload: dict):
 	if action == "create":
 		payload = dict(payload or {})
 		note_text = (payload.pop("_note_text", None) or "").strip()
 		lead_name = payload.pop("_lead_name", None)
+		if doctype == "CRM Call Log":
+			caller = _e164(payload.get("from")) or _fallback_phone()
+			called = _e164(payload.get("to")) or caller
+			payload["from"] = caller
+			payload["to"] = called
+			if called == caller and note_text and "no mobile" not in note_text.lower():
+				note_text = note_text + " (lead has no mobile on file)"
 		doc = frappe.get_doc({"doctype": doctype, **payload})
 		doc.insert()
 		if doctype == "CRM Call Log" and doc.get("reference_doctype") and doc.get("reference_docname"):
