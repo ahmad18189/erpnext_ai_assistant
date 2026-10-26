@@ -29,6 +29,28 @@ Use the installed-apps tool list when it is provided. Summarize the app title, d
 """,
 	},
 	{
+		"title": "ERPNext manual how-to",
+		"enabled": 1,
+		"priority": 6,
+		"routes": "",
+		"doctypes": "",
+		"roles": [
+			{"role": "System Manager"},
+			{"role": "Sales User"},
+			{"role": "Sales Manager"},
+			{"role": "Accounts User"},
+			{"role": "All"},
+		],
+		"description": """# ERPNext manual how-to
+
+When the user asks how to do something (كيف / how to / steps / manual / documentation):
+1. Call **search_manual** with the topic.
+2. Answer from the returned passages and cite the docs.frappe.io URL.
+3. Do not invent menu click-paths that are not in the manual text.
+4. Do not treat a how-to question as a create/write request.
+""",
+	},
+	{
 		"title": "CRM leads & deals",
 		"enabled": 1,
 		"priority": 10,

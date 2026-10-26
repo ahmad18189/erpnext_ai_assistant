@@ -1,52 +1,71 @@
-"""Install / migrate seeds for The ERPNext-AI-Assistant."""
+"""Install / migrate seeds for The ERPNext-AI-Assistant.
+
+Seeds run insert-if-missing only. Existing persona, skills, settings text, and
+custom rows are never overwritten on migrate. After install, set the OpenAI
+API key on ERP AI Settings — indexes rebuild safely on each migrate.
+"""
 
 from __future__ import annotations
 
 import frappe
 
-from erpnext_ai_assistant.services.moderation.abuse import DEFAULT_ABUSE_TERMS
 from erpnext_ai_assistant.services.arabic import normalize_arabic
+from erpnext_ai_assistant.services.moderation.abuse import DEFAULT_ABUSE_TERMS
+
+PERSONA_NAME = "Workplace Assistant"
+PERSONA_TONE = (
+	"You are The ERPNext-AI-Assistant, a workplace ERP/CRM helper for this site only. "
+	"Be concrete with live counts and samples from tools. Never invent DocType fields, "
+	"phone numbers, or e-invoice clearance IDs. Prefer Arabic when the user writes Arabic. "
+	"For how-to questions, use search_manual and cite the docs URL. "
+	"For quantity questions, use count_records. Never claim you cannot build charts."
+)
 
 
 def after_install():
-	_ensure_settings()
-	_seed_persona()
-	_seed_skills()
-	_seed_settings_children()
-	_seed_desktop_icon()
+	_bootstrap()
 	frappe.db.commit()
 
 
 def after_migrate():
 	_backfill_titles()
+	_bootstrap()
+
+
+def _bootstrap():
 	_ensure_settings()
 	_seed_persona()
 	_seed_skills()
 	_seed_settings_children()
 	_seed_desktop_icon()
+	_rebuild_indexes()
+
+
+def _rebuild_indexes():
+	"""Safe to re-run: catalog/RDF/RAG rebuild from current DocTypes and skills."""
 	try:
 		from erpnext_ai_assistant.services.doctype_catalog import clear_doctype_catalog, get_doctype_catalog
 
 		clear_doctype_catalog()
 		get_doctype_catalog(force=True)
 	except Exception:
-		frappe.log_error(title="ERP AI DocType catalog rebuild on migrate")
+		frappe.log_error(title="ERP AI DocType catalog rebuild")
 	try:
 		from erpnext_ai_assistant.services.rdf.graph import rebuild_rdf_graph
 
 		rebuild_rdf_graph()
 	except Exception:
-		frappe.log_error(title="ERP AI RDF rebuild on migrate")
+		frappe.log_error(title="ERP AI RDF rebuild")
 	try:
 		from erpnext_ai_assistant.services.rag.service import reindex_knowledge
 
 		reindex_knowledge()
 	except Exception:
-		frappe.log_error(title="ERP AI RAG reindex on migrate")
+		frappe.log_error(title="ERP AI RAG reindex")
 
 
 def _backfill_titles():
-	"""Fill the Title field on older hash-named rows so list view has a label."""
+	"""Fill empty Title only — never replace an existing title."""
 	jobs = [
 		("ERP AI Chat", "COALESCE(NULLIF(title, ''), LEFT(name, 40))"),
 		("ERP AI Message", "COALESCE(NULLIF(title, ''), CONCAT(IFNULL(role, 'message'), ': ', LEFT(IFNULL(content, name), 60)))"),
@@ -68,55 +87,71 @@ def _backfill_titles():
 
 
 def _ensure_settings():
+	"""Create Settings once; only fill blank fields afterward. Never overwrite site edits."""
 	if not frappe.db.exists("DocType", "ERP AI Settings"):
 		return
-	if not frappe.db.exists("ERP AI Settings", "ERP AI Settings"):
-		doc = frappe.new_doc("ERP AI Settings")
-		doc.enabled = 1
-		doc.work_only = 1
-		doc.moderation_enabled = 1
-		doc.memory_enabled = 1
-		doc.allow_pending_writes = 1
-		doc.abuse_threshold_count = 3
-		doc.abuse_threshold_days = 30
-		doc.provider_base_url = "https://api.openai.com/v1"
-		doc.model = "gpt-4o-mini"
-		doc.temperature = 0.2
-		doc.max_tokens = 2048
+	meta = frappe.get_meta("ERP AI Settings")
+	creating = not frappe.db.exists("ERP AI Settings", "ERP AI Settings")
+	doc = frappe.new_doc("ERP AI Settings") if creating else frappe.get_single("ERP AI Settings")
+
+	defaults = {
+		"enabled": 1,
+		"work_only": 1,
+		"moderation_enabled": 1,
+		"memory_enabled": 1,
+		"allow_pending_writes": 1,
+		"abuse_threshold_count": 3,
+		"abuse_threshold_days": 30,
+		"abuse_score_limit": 5,
+		"provider_base_url": "https://api.openai.com/v1",
+		"model": "gpt-4o-mini",
+		"temperature": 0.2,
+		"max_tokens": 2048,
+		"max_calls_per_user_day": 100,
+		"turn_deadline_seconds": 90,
+		"max_memory_items_per_user": 20,
+		"panel_title": "ERP Assistant",
+		"panel_subtitle": "مساعد أعمالك",
+		"panel_hint": "يجيب من بيانات العمل المتاحة لك. لا يُنفَّذ أي تعديل قبل موافقتك.",
+		"panel_hint_en": "Answers from the business data you can access. Nothing changes until you approve.",
+		"refusal_text_ar": "أنا مساعد عمل لنظام ERP فقط. يرجى طرح سؤال متعلق بالعمل على هذا الموقع.",
+		"refusal_text_en": "I am a workplace ERP assistant only. Please ask a work-related question about this site.",
+	}
+	changed = False
+	for fieldname, value in defaults.items():
+		if not meta.has_field(fieldname):
+			continue
+		current = doc.get(fieldname)
+		if creating:
+			doc.set(fieldname, value)
+			changed = True
+			continue
+		# Existing site: fill only empty / null. Do not reset 0 checks the admin turned off
+		# except call-cap fields where 0 means "never set" and blocks the assistant.
+		if current in (None, ""):
+			doc.set(fieldname, value)
+			changed = True
+		elif fieldname in ("max_calls_per_user_day", "turn_deadline_seconds") and current == 0:
+			doc.set(fieldname, value)
+			changed = True
+
+	site_key = frappe.conf.get("erp_ai_openai_api_key")
+	if site_key and not doc.api_key and meta.has_field("api_key"):
+		doc.api_key = site_key
+		changed = True
+
+	if creating:
 		doc.insert(ignore_permissions=True)
-	else:
-		doc = frappe.get_single("ERP AI Settings")
-		changed = False
-		if not doc.provider_base_url:
-			doc.provider_base_url = "https://api.openai.com/v1"
-			changed = True
-		if not doc.model:
-			doc.model = "gpt-4o-mini"
-			changed = True
-		for fieldname, value in (
-			("panel_title", "ERP Assistant"),
-			("panel_subtitle", "مساعد أعمالك"),
-			("panel_hint", "يجيب من بيانات العمل المتاحة لك. لا يُنفَّذ أي تعديل قبل موافقتك."),
-			("panel_hint_en", "Answers from the business data you can access. Nothing changes until you approve."),
-		):
-			if frappe.get_meta("ERP AI Settings").has_field(fieldname) and not (doc.get(fieldname) or "").strip():
-				doc.set(fieldname, value)
-				changed = True
-		# Prefer site_config over baking secrets into code
-		site_key = frappe.conf.get("erp_ai_openai_api_key")
-		if site_key and not doc.api_key:
-			doc.api_key = site_key
-			changed = True
-		if changed:
-			doc.save(ignore_permissions=True)
+	elif changed:
+		doc.save(ignore_permissions=True)
 
 
 def _seed_settings_children():
+	"""Append missing abuse terms / overlays / notify roles / active persona only."""
 	if not frappe.db.exists("DocType", "ERP AI Settings"):
 		return
 	doc = frappe.get_single("ERP AI Settings")
 	changed = False
-	# Merge any missing DEFAULT_ABUSE_TERMS (do not wipe custom additions)
 	existing = {
 		(normalize_arabic(r.term or "").lower() or (r.term or "").lower())
 		for r in (doc.abuse_terms or [])
@@ -150,13 +185,15 @@ def _seed_settings_children():
 				"enabled": 1,
 			}
 		)
-	existing = {(r.path_pattern or "") for r in (doc.overlay_pages or [])}
+	existing_paths = {(r.path_pattern or "") for r in (doc.overlay_pages or [])}
 	for row in wanted_overlays:
-		if row["path_pattern"] not in existing:
+		if row["path_pattern"] not in existing_paths:
 			doc.append("overlay_pages", row)
 			changed = True
+
+	# Link active persona only when unset.
 	if not doc.active_persona and frappe.db.exists("DocType", "ERP AI Persona"):
-		name = frappe.db.get_value("ERP AI Persona", {"persona_name": "Workplace Assistant"}, "name")
+		name = frappe.db.get_value("ERP AI Persona", {"persona_name": PERSONA_NAME}, "name")
 		if name:
 			doc.active_persona = name
 			changed = True
@@ -165,48 +202,47 @@ def _seed_settings_children():
 
 
 def _seed_persona():
+	"""Insert the default persona once. Never edit an existing persona row."""
 	if not frappe.db.exists("DocType", "ERP AI Persona"):
 		return
-	if frappe.db.exists("ERP AI Persona", {"persona_name": "Workplace Assistant"}):
+	if frappe.db.exists("ERP AI Persona", {"persona_name": PERSONA_NAME}):
+		return
+	if frappe.db.exists("ERP AI Persona", {"panel_label": "The ERPNext-AI-Assistant"}):
 		return
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Persona",
-			"persona_name": "Workplace Assistant",
+			"persona_name": PERSONA_NAME,
 			"enabled": 1,
 			"panel_label": "The ERPNext-AI-Assistant",
 			"panel_label_ar": "مساعد ERPNext",
 			"default_language": "ar",
-			"tone_instructions": (
-				"You are The ERPNext-AI-Assistant, a workplace ERP/CRM helper. "
-				"Answer only about this site's business data. Be concise. Prefer Arabic when the user writes Arabic. "
-				"Never invent DocType fields. Never invent e-invoice clearance identifiers."
-			),
-			"roles": [{"role": "System Manager"}, {"role": "Sales User"}, {"role": "Sales Manager"}],
+			"tone_instructions": PERSONA_TONE,
+			"roles": [
+				{"role": "System Manager"},
+				{"role": "Sales User"},
+				{"role": "Sales Manager"},
+			],
 		}
 	)
 	doc.insert(ignore_permissions=True)
 
 
-def _skill_seed_rows():
-	from erpnext_ai_assistant.skills.seed import SKILL_SEEDS
-
-	return SKILL_SEEDS
-
-
 def _seed_skills():
+	"""Insert each seeded skill once by title. Never overwrite existing skills."""
 	if not frappe.db.exists("DocType", "ERP AI Skill"):
 		return
-	for seed in _skill_seed_rows():
-		existing = frappe.db.get_value("ERP AI Skill", {"title": seed["title"]}, "name")
-		if existing:
+	from erpnext_ai_assistant.skills.seed import SKILL_SEEDS
+
+	for seed in SKILL_SEEDS:
+		if frappe.db.exists("ERP AI Skill", {"title": seed["title"]}):
 			continue
 		doc = frappe.get_doc({"doctype": "ERP AI Skill", **seed})
 		doc.insert(ignore_permissions=True)
 
 
 def _seed_desktop_icon():
-	"""Ensure Desk grid shows The ERPNext-AI-Assistant (Desktop Icons mode)."""
+	"""Ensure the Desk icon/workspace exist; do not wipe custom desktop layouts beyond unhiding."""
 	if not frappe.db.exists("DocType", "Desktop Icon"):
 		return
 	import json
@@ -220,17 +256,11 @@ def _seed_desktop_icon():
 		if doc.hidden:
 			doc.hidden = 0
 			changed = True
-		if doc.logo_url != logo:
+		if not doc.logo_url:
 			doc.logo_url = logo
 			changed = True
-		if doc.link != link:
+		if not doc.link:
 			doc.link = link
-			changed = True
-		if doc.icon_type != "App":
-			doc.icon_type = "App"
-			changed = True
-		if doc.app != "erpnext_ai_assistant":
-			doc.app = "erpnext_ai_assistant"
 			changed = True
 		if changed:
 			doc.save(ignore_permissions=True)
@@ -252,16 +282,14 @@ def _seed_desktop_icon():
 		)
 		doc.insert(ignore_permissions=True)
 
-	# Workspace must stay public/visible for the Desk link
 	if frappe.db.exists("Workspace", label):
 		frappe.db.set_value(
 			"Workspace",
 			label,
-			{"public": 1, "is_hidden": 0, "icon": "message", "type": "Workspace"},
+			{"public": 1, "is_hidden": 0},
 			update_modified=False,
 		)
 
-	# Desktop Icons home uses per-user Desktop Layout — inject if missing
 	if frappe.db.exists("DocType", "Desktop Layout"):
 		entry = {
 			"label": doc.label,
@@ -292,13 +320,8 @@ def _seed_desktop_icon():
 				continue
 			names = {(x.get("name") or x.get("label")) for x in data if isinstance(x, dict)}
 			if doc.name in names or doc.label in names:
-				for x in data:
-					if x.get("name") == doc.name or x.get("label") == doc.label:
-						x["hidden"] = 0
-						x["logo_url"] = doc.logo_url
-						x["link"] = doc.link
-			else:
-				data.insert(min(1, len(data)), entry)
+				continue
+			data.insert(min(1, len(data)), entry)
 			frappe.db.set_value(
 				"Desktop Layout",
 				lay,
