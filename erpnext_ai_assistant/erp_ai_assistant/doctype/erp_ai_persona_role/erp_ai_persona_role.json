@@ -1,0 +1,24 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Persona Role",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 1,
+ "editable_grid": 1,
+ "track_changes": 0,
+ "fields": [
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "label": "Role",
+   "options": "Role",
+   "reqd": 1
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": []
+}

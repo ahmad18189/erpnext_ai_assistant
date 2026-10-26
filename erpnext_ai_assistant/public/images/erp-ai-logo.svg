@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="The ERPNext-AI-Assistant">
+  <rect width="96" height="96" rx="22" fill="#0f1b2e"/>
+  <path fill="#ffffff" d="M68 24H28c-4.4 0-8 3.6-8 8v28c0 4.4 3.6 8 8 8h8l10 10 10-10h12c4.4 0 8-3.6 8-8V32c0-4.4-3.6-8-8-8z"/>
+  <circle cx="38" cy="44" r="4.5" fill="#0f1b2e"/>
+  <circle cx="48" cy="44" r="4.5" fill="#0f1b2e"/>
+  <circle cx="58" cy="44" r="4.5" fill="#0f1b2e"/>
+</svg>

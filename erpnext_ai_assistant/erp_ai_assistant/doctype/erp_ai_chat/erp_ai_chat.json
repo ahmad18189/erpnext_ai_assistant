@@ -1,0 +1,82 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Chat",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "default": "__user"
+  },
+  {
+   "fieldname": "route",
+   "fieldtype": "Data",
+   "label": "Route"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Open\nClosed",
+   "default": "Open"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Select",
+   "label": "Language",
+   "options": "ar\nen",
+   "default": "ar"
+  },
+  {
+   "fieldname": "context_summary",
+   "fieldtype": "Long Text",
+   "label": "Context Summary",
+   "description": "Rolling conversation memory for follow-ups"
+  },
+  {
+   "fieldname": "session_facts_json",
+   "fieldtype": "JSON",
+   "label": "Session Facts JSON"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1,
+   "email": 1
+  },
+  {
+   "role": "All",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 0,
+   "if_owner": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash",
+ "title_field": "title"
+}

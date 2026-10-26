@@ -1,0 +1,71 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Abuse Event",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 0,
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "chat",
+   "fieldtype": "Link",
+   "label": "Chat",
+   "options": "ERP AI Chat"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Link",
+   "label": "Message",
+   "options": "ERP AI Message"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "profanity\ninsult\nviolence\nharassment\nother",
+   "default": "other"
+  },
+  {
+   "fieldname": "excerpt",
+   "fieldtype": "Small Text",
+   "label": "Excerpt"
+  },
+  {
+   "fieldname": "score",
+   "fieldtype": "Float",
+   "label": "Score",
+   "default": 1
+  },
+  {
+   "fieldname": "matched_terms",
+   "fieldtype": "Small Text",
+   "label": "Matched Terms"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash"
+}

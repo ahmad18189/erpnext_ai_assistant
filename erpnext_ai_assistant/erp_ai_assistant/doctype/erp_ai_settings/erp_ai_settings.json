@@ -1,0 +1,215 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Settings",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 1,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "sb_llm",
+   "fieldtype": "Section Break",
+   "label": "OpenAI"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": 1
+  },
+  {
+   "fieldname": "provider_base_url",
+   "fieldtype": "Data",
+   "label": "OpenAI Base URL",
+   "default": "https://api.openai.com/v1",
+   "description": "Default https://api.openai.com/v1"
+  },
+  {
+   "fieldname": "column_break_llm",
+   "fieldtype": "Column Break",
+   "label": "Column Break Llm"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "OpenAI API Key",
+   "description": "Stored as Password. Prefer Desk Settings over committing secrets."
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "default": "gpt-4o-mini",
+   "description": "OpenAI model id, e.g. gpt-4o-mini"
+  },
+  {
+   "fieldname": "temperature",
+   "fieldtype": "Float",
+   "label": "Temperature",
+   "default": 0.2
+  },
+  {
+   "fieldname": "max_tokens",
+   "fieldtype": "Int",
+   "label": "Max Tokens",
+   "default": 2048
+  },
+  {
+   "fieldname": "sb_persona",
+   "fieldtype": "Section Break",
+   "label": "Persona"
+  },
+  {
+   "fieldname": "active_persona",
+   "fieldtype": "Link",
+   "label": "Active Persona",
+   "options": "ERP AI Persona"
+  },
+  {
+   "fieldname": "sb_scope",
+   "fieldtype": "Section Break",
+   "label": "Work Scope"
+  },
+  {
+   "fieldname": "work_only",
+   "fieldtype": "Check",
+   "label": "Work Only",
+   "default": 1
+  },
+  {
+   "fieldname": "refusal_text_ar",
+   "fieldtype": "Small Text",
+   "label": "Refusal Text AR",
+   "default": "أنا مساعد عمل لنظام ERP فقط. يرجى طرح سؤال متعلق بالعمل على هذا الموقع."
+  },
+  {
+   "fieldname": "refusal_text_en",
+   "fieldtype": "Small Text",
+   "label": "Refusal Text EN",
+   "default": "I am a workplace ERP assistant only. Please ask a work-related question about this site."
+  },
+  {
+   "fieldname": "sb_memory",
+   "fieldtype": "Section Break",
+   "label": "Memory"
+  },
+  {
+   "fieldname": "memory_enabled",
+   "fieldtype": "Check",
+   "label": "Memory Enabled",
+   "default": 1
+  },
+  {
+   "fieldname": "max_memory_items_per_user",
+   "fieldtype": "Int",
+   "label": "Max Memory Items Per User",
+   "default": 20
+  },
+  {
+   "fieldname": "sb_mod",
+   "fieldtype": "Section Break",
+   "label": "Moderation"
+  },
+  {
+   "fieldname": "moderation_enabled",
+   "fieldtype": "Check",
+   "label": "Moderation Enabled",
+   "default": 1
+  },
+  {
+   "fieldname": "abuse_threshold_count",
+   "fieldtype": "Int",
+   "label": "Abuse Threshold Count",
+   "default": 3
+  },
+  {
+   "fieldname": "abuse_threshold_days",
+   "fieldtype": "Int",
+   "label": "Abuse Threshold Days",
+   "default": 30
+  },
+  {
+   "fieldname": "abuse_score_limit",
+   "fieldtype": "Float",
+   "label": "Abuse Score Limit",
+   "default": 5
+  },
+  {
+   "fieldname": "block_duration_hours",
+   "fieldtype": "Int",
+   "label": "Block Duration Hours",
+   "default": 0
+  },
+  {
+   "fieldname": "allow_pending_writes",
+   "fieldtype": "Check",
+   "label": "Allow Pending Writes",
+   "default": 1
+  },
+  {
+   "fieldname": "notify_emails",
+   "fieldtype": "Small Text",
+   "label": "Notify Emails"
+  },
+  {
+   "fieldname": "sb_terms",
+   "fieldtype": "Section Break",
+   "label": "Abuse Terms"
+  },
+  {
+   "fieldname": "abuse_terms",
+   "fieldtype": "Table",
+   "label": "Abuse Terms",
+   "options": "ERP AI Settings Abuse Term"
+  },
+  {
+   "fieldname": "sb_notify",
+   "fieldtype": "Section Break",
+   "label": "Notify Roles"
+  },
+  {
+   "fieldname": "notify_roles",
+   "fieldtype": "Table",
+   "label": "Notify Roles",
+   "options": "ERP AI Settings Notify Role"
+  },
+  {
+   "fieldname": "sb_blocked",
+   "fieldtype": "Section Break",
+   "label": "Blocked Users"
+  },
+  {
+   "fieldname": "blocked_users",
+   "fieldtype": "Table",
+   "label": "Blocked Users",
+   "options": "ERP AI Settings Blocked User"
+  },
+  {
+   "fieldname": "sb_overlay",
+   "fieldtype": "Section Break",
+   "label": "Overlay Pages"
+  },
+  {
+   "fieldname": "overlay_pages",
+   "fieldtype": "Table",
+   "label": "Overlay Pages",
+   "options": "ERP AI Settings Overlay Page"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": []
+}

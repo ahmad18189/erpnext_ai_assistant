@@ -1,0 +1,25 @@
+The ERPNext-AI-Assistant,مساعد ERPNext
+Chat,محادثة
+History,السجل
+New,جديد
+Close,إغلاق
+Send,إرسال
+Thinking,التفكير
+Approve,موافقة
+Reject,رفض
+Rebuild RDF,إعادة بناء RDF
+Reindex RAG,إعادة فهرسة RAG
+OpenAI API Key,مفتاح OpenAI
+OpenAI Base URL,رابط OpenAI
+Work Only,عمل فقط
+Blocked Users,المستخدمون المحظورون
+Overlay Pages,صفحات الظهور
+Active Persona,الشخصية النشطة
+ERP AI Settings,إعدادات مساعد ERP
+ERP AI Chat,محادثة مساعد ERP
+ERP AI Message,رسالة مساعد ERP
+ERP AI Skill,مهارة مساعد ERP
+ERP AI Persona,شخصية مساعد ERP
+ERP AI Memory,ذاكرة مساعد ERP
+ERP AI Abuse Event,حدث إساءة مساعد ERP
+ERP AI Pending Action,إجراء معلّق لمساعد ERP

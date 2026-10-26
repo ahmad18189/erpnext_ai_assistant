@@ -1,0 +1,15 @@
+{
+ "doctype": "Report",
+ "name": "ERP AI Skill Usage",
+ "report_name": "ERP AI Skill Usage",
+ "module": "ERP AI Assistant",
+ "report_type": "Query Report",
+ "is_standard": "Yes",
+ "ref_doctype": "ERP AI Skill",
+ "query": "select title as \"Skill:Data:200\", enabled as \"Enabled:Check:80\", priority as \"Priority:Int:80\", routes as \"Routes:Data:200\", doctypes as \"DocTypes:Data:200\"\nfrom `tabERP AI Skill`\norder by priority asc",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ]
+}

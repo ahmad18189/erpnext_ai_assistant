@@ -1,0 +1,18 @@
+{
+ "app": "erpnext_ai_assistant",
+ "bg_color": "blue",
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon": "message",
+ "icon_type": "App",
+ "idx": 3,
+ "label": "The ERPNext-AI-Assistant",
+ "link": "/desk/the-erpnext-ai-assistant",
+ "link_type": "External",
+ "logo_url": "/assets/erpnext_ai_assistant/images/erp-ai-logo.svg",
+ "name": "The ERPNext-AI-Assistant",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}

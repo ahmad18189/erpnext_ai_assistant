@@ -1,0 +1,80 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Memory",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User"
+  },
+  {
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "label": "Scope",
+   "options": "user\ncompany",
+   "default": "user",
+   "reqd": 1
+  },
+  {
+   "fieldname": "key",
+   "fieldtype": "Data",
+   "label": "Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "value",
+   "fieldtype": "Long Text",
+   "label": "Value"
+  },
+  {
+   "fieldname": "source_chat",
+   "fieldtype": "Link",
+   "label": "Source Chat",
+   "options": "ERP AI Chat"
+  },
+  {
+   "fieldname": "expires_on",
+   "fieldtype": "Date",
+   "label": "Expires On"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1,
+   "email": 1
+  },
+  {
+   "role": "All",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 0,
+   "if_owner": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash"
+}

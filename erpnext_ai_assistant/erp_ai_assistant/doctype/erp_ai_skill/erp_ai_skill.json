@@ -1,0 +1,69 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Skill",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": 1
+  },
+  {
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority",
+   "default": 10
+  },
+  {
+   "fieldname": "routes",
+   "fieldtype": "Small Text",
+   "label": "Routes"
+  },
+  {
+   "fieldname": "doctypes",
+   "fieldtype": "Small Text",
+   "label": "DocTypes"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Markdown Editor",
+   "label": "Description"
+  },
+  {
+   "fieldname": "roles",
+   "fieldtype": "Table",
+   "label": "Roles",
+   "options": "ERP AI Skill Role"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash",
+ "title_field": "title"
+}

@@ -1,0 +1,57 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Metadata Cache",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "doctype\nreport\ndashboard\nworkspace\nprint_format",
+   "reqd": 1
+  },
+  {
+   "fieldname": "ref_name",
+   "fieldtype": "Data",
+   "label": "Ref Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "payload_json",
+   "fieldtype": "JSON",
+   "label": "Payload JSON"
+  },
+  {
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash"
+  },
+  {
+   "fieldname": "synced_at",
+   "fieldtype": "Datetime",
+   "label": "Synced At"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash"
+}

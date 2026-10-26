@@ -1,0 +1,75 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Persona",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "persona_name",
+   "fieldtype": "Data",
+   "label": "Persona Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": 1
+  },
+  {
+   "fieldname": "panel_label",
+   "fieldtype": "Data",
+   "label": "Panel Label"
+  },
+  {
+   "fieldname": "panel_label_ar",
+   "fieldtype": "Data",
+   "label": "Panel Label AR"
+  },
+  {
+   "fieldname": "tone_instructions",
+   "fieldtype": "Long Text",
+   "label": "Tone Instructions"
+  },
+  {
+   "fieldname": "default_language",
+   "fieldtype": "Select",
+   "label": "Default Language",
+   "options": "ar\nen",
+   "default": "ar"
+  },
+  {
+   "fieldname": "avatar",
+   "fieldtype": "Attach Image",
+   "label": "Avatar"
+  },
+  {
+   "fieldname": "roles",
+   "fieldtype": "Table",
+   "label": "Roles",
+   "options": "ERP AI Persona Role"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash",
+ "title_field": "persona_name"
+}

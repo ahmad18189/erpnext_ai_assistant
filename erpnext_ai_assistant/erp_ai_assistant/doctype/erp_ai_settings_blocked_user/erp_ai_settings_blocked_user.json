@@ -1,0 +1,50 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Settings Blocked User",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 1,
+ "editable_grid": 1,
+ "track_changes": 0,
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "blocked_on",
+   "fieldtype": "Datetime",
+   "label": "Blocked On"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "blocked_until",
+   "fieldtype": "Datetime",
+   "label": "Blocked Until"
+  },
+  {
+   "fieldname": "cleared_on",
+   "fieldtype": "Datetime",
+   "label": "Cleared On"
+  },
+  {
+   "fieldname": "cleared_by",
+   "fieldtype": "Link",
+   "label": "Cleared By",
+   "options": "User"
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": []
+}

@@ -1,0 +1,15 @@
+{
+ "doctype": "Report",
+ "name": "ERP AI Pending Actions",
+ "report_name": "ERP AI Pending Actions",
+ "module": "ERP AI Assistant",
+ "report_type": "Query Report",
+ "is_standard": "Yes",
+ "ref_doctype": "ERP AI Pending Action",
+ "query": "select name as \"Action:Link/ERP AI Pending Action:160\", user as \"User:Link/User:160\", action_type as \"Type:Data:80\", target_doctype as \"DocType:Data:120\", status as \"Status:Data:100\", acknowledged as \"Ack:Check:60\", modified as \"Modified:Datetime:160\"\nfrom `tabERP AI Pending Action`\norder by modified desc",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ]
+}

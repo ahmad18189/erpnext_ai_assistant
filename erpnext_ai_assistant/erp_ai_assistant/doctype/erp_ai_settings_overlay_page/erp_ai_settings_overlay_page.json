@@ -1,0 +1,41 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Settings Overlay Page",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 1,
+ "editable_grid": 1,
+ "track_changes": 0,
+ "fields": [
+  {
+   "fieldname": "path_pattern",
+   "fieldtype": "Data",
+   "label": "Path Pattern",
+   "reqd": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "label": "Label"
+  },
+  {
+   "fieldname": "host_hint",
+   "fieldtype": "Select",
+   "label": "Host Hint",
+   "options": "crm_spa\ndesk\ncustom",
+   "default": "custom"
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": 1
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": []
+}

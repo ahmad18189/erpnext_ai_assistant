@@ -1,0 +1,51 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Knowledge Chunk",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "document",
+   "fieldtype": "Link",
+   "label": "Document",
+   "options": "ERP AI Knowledge Document",
+   "reqd": 1
+  },
+  {
+   "fieldname": "chunk_index",
+   "fieldtype": "Int",
+   "label": "Chunk Index"
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Long Text",
+   "label": "Content"
+  },
+  {
+   "fieldname": "qdrant_point_id",
+   "fieldtype": "Data",
+   "label": "Qdrant Point Id"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash"
+}

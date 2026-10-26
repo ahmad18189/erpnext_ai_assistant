@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Frappe / bench local
+*.pyc
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Secrets & local env — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+seacret*
+myvar*
+site_config*.json
+credentials*.json
+*_credentials*
+*.secret
+
+# IDE / OS
+.idea/
+.vscode/
+.cursor/
+*.log
+
+# Node (if local bundlers appear)
+node_modules/
+npm-debug.log*
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local dumps / exports
+*.sql
+*.dump
+*.xlsx
+!docs/**

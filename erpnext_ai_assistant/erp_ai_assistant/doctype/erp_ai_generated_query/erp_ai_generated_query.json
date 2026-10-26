@@ -1,0 +1,50 @@
+{
+ "doctype": "DocType",
+ "name": "ERP AI Generated Query",
+ "module": "ERP AI Assistant",
+ "engine": "InnoDB",
+ "is_submittable": 0,
+ "issingle": 0,
+ "istable": 0,
+ "editable_grid": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "message",
+   "fieldtype": "Link",
+   "label": "Message",
+   "options": "ERP AI Message"
+  },
+  {
+   "fieldname": "query_type",
+   "fieldtype": "Data",
+   "label": "Query Type"
+  },
+  {
+   "fieldname": "payload_json",
+   "fieldtype": "JSON",
+   "label": "Payload JSON"
+  },
+  {
+   "fieldname": "doctype_name",
+   "fieldtype": "Data",
+   "label": "DocType Name"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "report": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "links": [],
+ "autoname": "hash"
+}
