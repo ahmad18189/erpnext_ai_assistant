@@ -43,6 +43,12 @@
    "in_standard_filter": 1
   },
   {
+   "fieldname": "source_roles",
+   "fieldtype": "Small Text",
+   "label": "Source Roles",
+   "description": "One role per line. Empty means any user who can use the assistant. Retrieval hides the document otherwise."
+  },
+  {
    "fieldname": "tab_content",
    "fieldtype": "Tab Break",
    "label": "Content"

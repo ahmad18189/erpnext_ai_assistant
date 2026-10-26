@@ -71,24 +71,25 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 		settings.blocked_users = []
 		settings.save()
 		abuse_mod.scan_abuse("idiot idiot", chat=None)
-		self.assertTrue(abuse_mod.is_user_blocked("Administrator") or True)  # may already notify path
+		self.assertTrue(abuse_mod.is_user_blocked("Administrator"))
 		msg = abuse_mod.blocked_message("ar")
 		self.assertIn("حظر", msg)
 
 	def test_T07_rdf_arabic_name_to_lead_name(self):
 		from erpnext_ai_assistant.services.rdf.graph import lookup, rebuild_rdf_graph
 
-		rebuild_rdf_graph(["CRM Lead"] if frappe.db.exists("DocType", "CRM Lead") else ["Lead"])
+		target = "Lead" if frappe.db.exists("DocType", "Lead") else "CRM Lead"
+		rebuild_rdf_graph([target])
 		hits = lookup("اسم")
-		fields = {h["fieldname"] for h in hits if h.get("doctype") in ("CRM Lead", "Lead")}
-		self.assertTrue("lead_name" in fields or hits)  # lead_name preferred
+		fields = {h["fieldname"] for h in hits if h.get("doctype") == target}
+		self.assertIn("lead_name", fields)
 
 	def test_T08_crm_skill_loads_for_route(self):
 		from erpnext_ai_assistant.services.tools.registry import read_skill
 
 		skills = read_skill(route="/crm/leads")
 		titles = [s.title for s in skills]
-		self.assertTrue(any("CRM" in t or "lead" in t.lower() for t in titles) or skills == skills)
+		self.assertTrue(any("CRM" in (t or "") or "lead" in (t or "").lower() for t in titles))
 
 	def test_T09_T10_pending_action_ack_and_reject(self):
 		from erpnext_ai_assistant.services.tools.registry import propose_write
@@ -184,6 +185,176 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 			frappe.db.exists("Workspace", "The ERPNext-AI-Assistant")
 			or frappe.db.exists("Workspace", {"title": "The ERPNext-AI-Assistant"})
 		)
+
+	def test_T18_history_uses_newest_window(self):
+		from erpnext_ai_assistant.services.conversation import load_openai_history
+		from erpnext_ai_assistant.services.naming import as_title
+
+		chat = frappe.get_doc(
+			{
+				"doctype": "ERP AI Chat",
+				"title": as_title("ERP AI Chat", "history-window"),
+				"user": frappe.session.user,
+				"status": "Open",
+				"language": "en",
+			}
+		).insert()
+		for i in range(20):
+			frappe.get_doc(
+				{
+					"doctype": "ERP AI Message",
+					"title": as_title("ERP AI Message", f"history {i}"),
+					"chat": chat.name,
+					"role": "user" if i % 2 == 0 else "assistant",
+					"content": f"m{i}",
+					"status": "complete",
+				}
+			).insert()
+		history = load_openai_history(chat.name, exclude_last_user=False)
+		self.assertEqual(history[0]["content"], "m4")
+		self.assertEqual(history[-1]["content"], "m19")
+		self.assertEqual(len(history), 16)
+
+	def test_T19_missing_phone_is_not_invented(self):
+		from erpnext_ai_assistant.services.detectors import _propose_create_call
+
+		if not frappe.db.exists("DocType", "CRM Lead"):
+			self.skipTest("CRM Lead is not installed")
+		lead = frappe.get_doc(
+			{"doctype": "CRM Lead", "first_name": "NoPhone", "lead_name": "NoPhone", "status": "New"}
+		).insert(ignore_permissions=True)
+		result = _propose_create_call(f"add a call to the lead {lead.name}", [], chat_id=None, lang="en")
+		text = (result.get("message_en") or "") + json.dumps(result)
+		self.assertEqual(result.get("status"), "need_input")
+		self.assertNotIn("+966500000000", text)
+		self.assertNotIn('"from": "manual"', text)
+
+	def test_T20_payload_cannot_change_after_proposal(self):
+		from erpnext_ai_assistant.services.naming import as_title
+		from erpnext_ai_assistant.services.tools.registry import propose_write
+
+		chat = frappe.get_doc(
+			{
+				"doctype": "ERP AI Chat",
+				"title": as_title("ERP AI Chat", "tamper"),
+				"user": frappe.session.user,
+				"status": "Open",
+				"language": "en",
+			}
+		).insert()
+		pending = propose_write(chat.name, "create", "ToDo", {"description": "original"})
+		doc = frappe.get_doc("ERP AI Pending Action", pending["pending_action"])
+		doc.payload_json = json.dumps({"description": "tampered"})
+		with self.assertRaises(frappe.ValidationError):
+			doc.save()
+
+	def test_T21_reject_and_second_approve_are_closed(self):
+		from erpnext_ai_assistant.services.naming import as_title
+		from erpnext_ai_assistant.services.tools.registry import propose_write
+
+		chat = frappe.get_doc(
+			{
+				"doctype": "ERP AI Chat",
+				"title": as_title("ERP AI Chat", "replay"),
+				"user": frappe.session.user,
+				"status": "Open",
+				"language": "en",
+			}
+		).insert()
+		pending = propose_write(chat.name, "create", "ToDo", {"description": "replay-me"})
+		name = pending["pending_action"]
+		frappe.call(
+			"erpnext_ai_assistant.api.chat.approve_action",
+			pending_action=name,
+			acknowledgment_text="I approve",
+			acknowledged=1,
+		)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.call(
+				"erpnext_ai_assistant.api.chat.approve_action",
+				pending_action=name,
+				acknowledgment_text="again",
+				acknowledged=1,
+			)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.call("erpnext_ai_assistant.api.chat.reject_action", pending_action=name, reason="too late")
+		self.assertEqual(frappe.db.get_value("ERP AI Pending Action", name, "status"), "executed")
+
+	def test_T22_other_user_cannot_approve(self):
+		from erpnext_ai_assistant.services.naming import as_title
+		from erpnext_ai_assistant.services.tools.registry import propose_write
+
+		email = "erp-ai-other@example.com"
+		if not frappe.db.exists("User", email):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": email,
+					"first_name": "Other",
+					"send_welcome_email": 0,
+				}
+			).insert(ignore_permissions=True)
+		chat = frappe.get_doc(
+			{
+				"doctype": "ERP AI Chat",
+				"title": as_title("ERP AI Chat", "isolation"),
+				"user": frappe.session.user,
+				"status": "Open",
+				"language": "en",
+			}
+		).insert()
+		pending = propose_write(chat.name, "create", "ToDo", {"description": "not-yours"})
+		frappe.set_user(email)
+		with self.assertRaises(frappe.PermissionError):
+			frappe.call(
+				"erpnext_ai_assistant.api.chat.approve_action",
+				pending_action=pending["pending_action"],
+				acknowledgment_text="steal",
+				acknowledged=1,
+			)
+
+	def test_T23_restricted_skill_is_not_retrieved(self):
+		from erpnext_ai_assistant.services.rag.service import _upsert_document, retrieve
+
+		_upsert_document(
+			"skill:secret",
+			"Secret Skill Doc",
+			"SECRET_SKILL_PHRASE_ZX",
+			"skill",
+			source_roles="System Manager",
+		)
+		docname = frappe.db.get_value("ERP AI Knowledge Document", {"title": "Secret Skill Doc"}, "name")
+		if not frappe.db.exists("ERP AI Knowledge Chunk", {"document": docname, "chunk_index": 0}):
+			frappe.get_doc(
+				{
+					"doctype": "ERP AI Knowledge Chunk",
+					"title": "Secret Skill Doc 1",
+					"document": docname,
+					"chunk_index": 0,
+					"content": "SECRET_SKILL_PHRASE_ZX",
+				}
+			).insert(ignore_permissions=True)
+		email = "erp-ai-other@example.com"
+		frappe.set_user(email)
+		hits = retrieve("SECRET_SKILL_PHRASE_ZX")
+		self.assertFalse(any("SECRET_SKILL_PHRASE_ZX" in (hit.get("content") or "") for hit in hits))
+
+	def test_T24_schema_lists_missing_mandatory_fields(self):
+		from erpnext_ai_assistant.services.schema import prepare_payload
+
+		empty = prepare_payload("ToDo", {}, "create")
+		self.assertTrue(any(item["fieldname"] == "description" for item in empty["missing"]))
+		ready = prepare_payload("ToDo", {"description": "buy milk"}, "create")
+		self.assertFalse(ready["missing"])
+		self.assertEqual(ready["payload"]["description"], "buy milk")
+
+	def test_T25_approval_summary_is_not_html(self):
+		from pathlib import Path
+
+		source = Path(frappe.get_app_path("erpnext_ai_assistant", "public", "js", "erpnext_ai_assistant.bundle.js")).read_text()
+		self.assertIn("function safeLocalPath", source)
+		self.assertIn('textNode("div", "", (pending && pending.summary)', source)
+		self.assertNotIn('el("div", "", (pending && pending.summary)', source)
 
 	def test_T17_reports_exist(self):
 		for name in (

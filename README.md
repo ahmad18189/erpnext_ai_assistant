@@ -4,7 +4,7 @@ Workplace AI assistant for **Frappe / ERPNext** (and related CRM/HRMS hosts).
 It ships as a Frappe app (`erpnext_ai_assistant`) with an Arabic-first RTL chat panel, session-scoped ERP tools, RAG/RDF retrieval, abuse moderation, and a Pending Action flow for writes.
 
 > **Product name:** The ERPNext-AI-Assistant  
-> **UI subtitle (AR):** مساعد ERPNext  
+> **Default header:** ERP Assistant / مساعد أعمالك (editable in Settings)  
 > **Module:** `ERP AI Assistant`
 
 ---
@@ -13,14 +13,14 @@ It ships as a Frappe app (`erpnext_ai_assistant`) with an Arabic-first RTL chat 
 
 | Capability | Behavior |
 |---|---|
-| Chat panel | Fixed desktop FAB + overlay panel on configured routes (`/crm`, `/app`, …) |
+| Chat panel | FAB and overlay on Desk and on every installed app route |
 | Live ERP reads | Session-user `get_list` / `get_doc` / reports — **no** `ignore_permissions` |
-| Writes | Never silent. Creates **ERP AI Pending Action**; user must acknowledge + approve |
+| Writes | Schema check, then **ERP AI Pending Action**. Payload is locked. User must approve once |
 | Memory | Rolling chat summary + session facts so follow-ups keep context |
 | Charts | Server-built SVG charts (no heavy chart libraries in the panel) |
 | Moderation | Abuse term scan → event → threshold block; work-only gate before the model |
 | Knowledge | Skills, Persona, Memory DocTypes + RAG chunks + RDF metadata graph |
-| LLM | OpenAI-compatible chat completions called **last** in the pipeline |
+| LLM | OpenAI-compatible chat. The model chooses an allowlisted tool; the server checks permission and schema. Regex routing is the fallback when no key is set |
 
 Permissions and Frappe roles always win. Guests cannot chat.
 
@@ -30,8 +30,8 @@ Permissions and Frappe roles always win. Guests cannot chat.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Host (Desk /crm / HRMS)                                    │
-│  Overlay Pages match path → load app JS/CSS                 │
+│  Any installed app + Desk                                  │
+│  App routes from hooks → Overlay Pages → panel JS/CSS      │
 │  FAB + panel (Cairo / RTL / navy)                           │
 └───────────────────────────┬─────────────────────────────────┘
                             │ frappe.call run / approve_action
@@ -45,18 +45,18 @@ Permissions and Frappe roles always win. Guests cannot chat.
 │  5. Work-scope gate     (deterministic, no LLM)             │
 │  6. Skills + Persona + Memory                               │
 │  7. RAG retrieve                                            │
-│  8. Detectors → tool registry (RDF before name queries)     │
-│  9. LLM complete        (OpenAI last)                       │
-│ 10. Charts / Pending Action payload back to panel           │
+│  8. Detectors + DocType schema (no invented fields)        │
+│  9. LLM complete        (OpenAI last; images if attached)  │
+│ 10. Charts / locked Pending Action back to the panel       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Integration model
 
 - This app **owns** panel JS/CSS (`public/js`, `public/css`).
-- Host apps opt in via **ERP AI Settings → Overlay Pages** (`path_pattern`, e.g. `/crm`, `/app`).
-- Desk also loads assets through `app_include_js` / `app_include_css`.
-- CRM SPA can load a thin `crm_include.js` shim.
+- Any installed app can host the panel. Routes come from that app's `add_to_apps_screen` hook, plus Desk. Add more paths under ERP AI Settings → Overlay Pages.
+- Desk loads assets through `app_include_js` / `app_include_css`.
+- A host page may load the thin `crm_include.js` shim. The shim only inserts this app's bundle.
 
 Do **not** put assistant CSS into a theme app.
 
@@ -122,14 +122,20 @@ erpnext_ai_assistant/
     ├── public/js|css/             # panel + CRM include
     ├── services/
     │   ├── run_chat.py            # orchestrator
-    │   ├── conversation.py        # history + session facts
-    │   ├── detectors.py           # intent → tools/charts/pending
+    │   ├── schema.py              # DocType contract for writes
+    │   ├── writes.py              # payload hash + summary
+    │   ├── apps.py                # installed app routes
+    │   ├── imports.py             # import-template match
+    │   ├── conversation.py        # newest history window
+    │   ├── detectors.py           # fallback when the model is off
     │   ├── moderation/            # abuse + work_gate
     │   ├── llm/provider.py        # OpenAI-compatible client
-    │   ├── rag/                   # knowledge retrieve / reindex
-    │   ├── rdf/                   # metadata graph
+    │   ├── rag/                   # retrieve, role-filtered
+    │   ├── rdf/                   # label → fieldname
     │   ├── charts/                # SVG builders
-    │   └── tools/registry.py      # session-user tools
+    │   └── tools/
+    │       ├── agent.py           # model-directed tool loop
+    │       └── registry.py        # session-user tools
     ├── skills/                    # seed skill content
     └── erp_ai_assistant/          # DocTypes, Workspace, Reports
 ```
@@ -164,16 +170,11 @@ Prefer one of:
 
 3. Environment: `OPENAI_API_KEY` or `ERP_AI_API_KEY`
 
-Optional Settings fields: `provider_base_url` (default OpenAI), `model` (default `gpt-4o-mini`), temperature, max tokens, Overlay Pages, abuse thresholds.
+Optional Settings fields: `provider_base_url` (default OpenAI), `model` (default `gpt-4o-mini`), temperature, max tokens, panel title and hints, Overlay Pages, abuse thresholds.
 
-### Overlay Pages
+### Where the panel appears
 
-Seed includes:
-
-- `/crm` — CRM SPA  
-- `/app` — Frappe Desk  
-
-Add more paths (e.g. HRMS) under ERP AI Settings → Overlay Pages.
+Install adds an Overlay Page for `/desk`, `/app`, and each installed app route from `add_to_apps_screen` or `app_icon_route`. Add or disable paths under ERP AI Settings → Overlay Pages. The assistant then works on that app, not only on one product.
 
 ---
 
@@ -182,9 +183,11 @@ Add more paths (e.g. HRMS) under ERP AI Settings → Overlay Pages.
 | Method | Role |
 |---|---|
 | `erpnext_ai_assistant.api.chat.run` | Send a message; returns answer + `contains_abuse` + charts/pending |
+| `erpnext_ai_assistant.api.chat.upload_attachment` | Private upload of an image, CSV, XLSX, PDF, or text file |
+| `erpnext_ai_assistant.api.chat.blank_import_template` | CSV header row for one DocType, same columns as a Frappe blank import |
 | `erpnext_ai_assistant.api.chat.approve_action` | Execute pending write after ack |
 | `erpnext_ai_assistant.api.chat.reject_action` | Cancel pending write |
-| `erpnext_ai_assistant.api.chat.get_boot` | Panel boot (persona, overlays, blocked flag) |
+| `erpnext_ai_assistant.api.chat.bootstrap` | Panel boot (persona, branding, overlays, blocked flag) |
 
 Every `run` response includes:
 
@@ -211,13 +214,23 @@ Realtime thinking steps publish on `erp_ai_thinking` / room `erp_ai_chat:{chat_i
 
 ---
 
+## Files and Data Import review
+
+The composer accepts images, CSV, XLSX, PDF, and plain text (5 MB). Files are stored as private Frappe Files owned by the signed-in user.
+
+- **Images** are sent to the model as image input so it can read them. They are not written into ERP documents.
+- **CSV / XLSX** are compared with Frappe Data Import templates. A template is the target DocType's importable columns (field names and labels, including child-table columns). The reply ranks the closest DocTypes and lists mapped columns, required fields that are missing, and file columns that do not match a field.
+- **Blank template.** Each suggestion can download a one-row CSV header for that DocType. That is the same column list you would start from in Desk → Data Import → Download Template, without sample records.
+- **No automatic import.** Matching a file does not insert rows. Create and start a Data Import in Desk when the review looks right. Other writes still go through Pending Action and approval.
+
 ## Security model
 
 - **No Guest** chat.
 - ERP reads/writes use the **session user** only.
 - Abuse list is seeded + always unioned at scan time; hits create **ERP AI Abuse Event**.
 - Threshold on Settings can append **Blocked User** and notify manager roles.
-- Writes require checkbox + acknowledgment text before `approve_action`.
+- Writes require a checkbox and acknowledgment text. The payload is hashed and cannot be edited before `approve_action`. Approval runs once.
+- Uploaded files are private to the signed-in user. A spreadsheet match does not insert rows.
 - API keys must live in Password / `site_config` / env — **never** in this repository.
 
 ---

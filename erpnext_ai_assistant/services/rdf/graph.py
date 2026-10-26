@@ -46,7 +46,7 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None) -> dict:
 				continue
 			labels = [df.label, df.fieldname]
 			# Common Arabic aliases for CRM Lead name fields
-			if dt == "CRM Lead" and df.fieldname in ("lead_name", "first_name", "last_name"):
+			if dt in ("CRM Lead", "Lead") and df.fieldname in ("lead_name", "first_name", "last_name"):
 				labels.extend(["اسم", "الاسم", "الاسم الكامل", "اسم العميل", "name"])
 			for lab in labels:
 				if not lab:

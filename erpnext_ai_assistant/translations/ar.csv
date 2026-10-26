@@ -190,3 +190,9 @@ Stored as Password. Prefer Desk Settings over committing secrets.,يُحفظ ك�
 Default https://api.openai.com/v1,الافتراضي https://api.openai.com/v1
 "OpenAI model id, e.g. gpt-4o-mini",معرّف النموذج، مثل gpt-4o-mini
 Rolling conversation memory for follow-ups,ذاكرة المحادثة للمتابعات
+
+Panel Title,عنوان اللوحة
+Panel Subtitle,العنوان الفرعي
+Panel Hint,تلميح اللوحة
+Panel Hint EN,تلميح اللوحة بالإنجليزية
+Panel Text,نص اللوحة

@@ -42,6 +42,7 @@ def build_chart(
 		"title": title or "",
 		"labels": labels,
 		"values": norm_values,
+		"sample_note": "Counts use only the rows returned for this chart, not an unbounded total.",
 	}
 	if chart_type == "kpi":
 		payload["value"] = value if value is not None else (norm_values[0] if norm_values else 0)

@@ -26,6 +26,13 @@
   color: #0f172a;
 }
 
+.erp-ai-root.erp-ai-expanded {
+  top: 16px;
+  left: 16px;
+  width: min(960px, calc(100vw - 32px));
+  height: calc(100vh - 32px);
+}
+
 .erp-ai-root[hidden],
 .erp-ai-root.erp-ai-closed {
   display: none !important;
@@ -76,21 +83,42 @@
 }
 
 .erp-ai-brand strong {
-  font-size: 0.95rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
   color: var(--erp-ai-navy);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .erp-ai-brand span {
+  margin-top: 2px;
   font-size: 0.75rem;
+  line-height: 1.35;
   color: var(--erp-ai-muted);
 }
 
 .erp-ai-header-actions {
   display: flex;
   gap: 0.35rem;
+}
+
+.erp-ai-header button.erp-ai-size {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.erp-ai-header button.erp-ai-size svg {
+  display: block;
+}
+
+.erp-ai-root.erp-ai-expanded .erp-ai-size {
+  background: var(--erp-ai-navy);
+  color: #fff;
+  border-color: var(--erp-ai-navy);
 }
 
 .erp-ai-header button,
@@ -170,6 +198,76 @@
   border-color: #0f1b2e;
 }
 
+.erp-ai-md {
+  white-space: normal;
+}
+
+.erp-ai-md p,
+.erp-ai-md ul,
+.erp-ai-md ol,
+.erp-ai-md pre {
+  margin: 0 0 0.55rem;
+}
+
+.erp-ai-md p:last-child,
+.erp-ai-md ul:last-child,
+.erp-ai-md ol:last-child,
+.erp-ai-md pre:last-child {
+  margin-bottom: 0;
+}
+
+.erp-ai-md h1,
+.erp-ai-md h2,
+.erp-ai-md h3 {
+  margin: 0.35rem 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.erp-ai-md ul,
+.erp-ai-md ol {
+  padding-inline-start: 1.25rem;
+}
+
+.erp-ai-md li {
+  margin: 0.2rem 0;
+}
+
+.erp-ai-md li > p {
+  margin: 0;
+}
+
+.erp-ai-md strong {
+  font-weight: 700;
+}
+
+.erp-ai-md a {
+  color: #1d4ed8;
+}
+
+.erp-ai-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.84em;
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 0.05rem 0.28rem;
+}
+
+.erp-ai-md pre {
+  background: var(--erp-ai-navy);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  overflow: auto;
+}
+
+.erp-ai-md pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
 .erp-ai-thinking {
   margin-bottom: 0.5rem;
   border: 1px solid var(--erp-ai-border);
@@ -195,6 +293,12 @@
 
 .erp-ai-thinking li[data-status="running"] {
   color: var(--erp-ai-navy);
+}
+
+.erp-ai-step-detail {
+  color: var(--erp-ai-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .erp-ai-chart {
@@ -319,8 +423,44 @@
 }
 
 .erp-ai-hint {
+  flex: 1;
   font-size: 0.72rem;
+  line-height: 1.4;
   color: var(--erp-ai-muted);
+}
+
+.erp-ai-attach {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--erp-ai-border);
+  background: #fff;
+  color: var(--erp-ai-navy);
+  font-weight: 700;
+}
+
+.erp-ai-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.erp-ai-file-chip {
+  border: 1px solid var(--erp-ai-border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.erp-ai-import {
+  margin-top: 0.45rem;
+}
+
+.erp-ai-import button {
+  margin-top: 0.25rem;
+  margin-inline-end: 0.35rem;
 }
 
 .erp-ai-history-item {
@@ -348,5 +488,11 @@
     right: 8px;
     width: auto;
     height: min(684px, calc(100vh - 96px));
+  }
+
+  .erp-ai-root.erp-ai-expanded {
+    top: 8px;
+    height: calc(100vh - 16px);
+    width: auto;
   }
 }

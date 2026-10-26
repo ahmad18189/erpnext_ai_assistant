@@ -10,12 +10,117 @@ from erpnext_ai_assistant.services.moderation import abuse as abuse_mod
 
 
 @frappe.whitelist()
-def run(message: str, route: str | None = None, chat_id: str | None = None):
+def run(message: str, route: str | None = None, chat_id: str | None = None, attachments: str | None = None):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
-	if not (message or "").strip():
+	if not (message or "").strip() and not attachments:
 		frappe.throw("Empty message")
-	return orch.run_chat(message=message.strip(), route=route, chat_id=chat_id)
+	images = _images_from_attachments(attachments)
+	return orch.run_chat(
+		message=(message or "Review the attached file.").strip(),
+		route=route,
+		chat_id=chat_id,
+		images=images,
+	)
+
+
+@frappe.whitelist()
+def upload_attachment():
+	"""Store one private file for the current user and, for tables, review import templates."""
+	if frappe.session.user == "Guest":
+		frappe.throw("Login required", frappe.PermissionError)
+	upload = (frappe.request.files or {}).get("file") if getattr(frappe, "request", None) else None
+	if not upload:
+		frappe.throw("No file")
+	filename = (upload.filename or "upload").replace("/", "_").replace("\\", "_")
+	content = upload.stream.read()
+	if len(content) > 5_000_000:
+		frappe.throw("File is larger than 5 MB")
+	ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+	allowed = {"png", "jpg", "jpeg", "webp", "gif", "csv", "xlsx", "txt", "pdf"}
+	if ext not in allowed:
+		frappe.throw("File type is not supported")
+	from frappe.utils.file_manager import save_file
+
+	file_doc = save_file(filename, content, None, None, is_private=1)
+	kind = "image" if ext in {"png", "jpg", "jpeg", "webp", "gif"} else "table" if ext in {"csv", "xlsx"} else "text"
+	result = {"file_url": file_doc.file_url, "file_name": filename, "kind": kind}
+	if kind == "table":
+		from erpnext_ai_assistant.services.imports import read_table, review_table, review_text
+
+		header, sample = read_table(content, filename)
+		review = review_table(header, sample)
+		result["review"] = review
+		result["review_text"] = review_text(review, "ar" if _prefers_ar() else "en")
+	elif kind == "text":
+		result["excerpt"] = _text_excerpt(content, ext)
+	return result
+
+
+@frappe.whitelist()
+def blank_import_template(doctype: str):
+	"""CSV header row for a Frappe blank import template of this DocType."""
+	if frappe.session.user == "Guest":
+		frappe.throw("Login required", frappe.PermissionError)
+	from erpnext_ai_assistant.services.imports import blank_template_csv
+
+	return {"doctype": doctype, "filename": f"{doctype}.csv", "csv": blank_template_csv(doctype)}
+
+
+def _app_routes() -> list:
+	from erpnext_ai_assistant.services.apps import installed_app_routes
+
+	try:
+		return installed_app_routes()
+	except Exception:
+		return []
+
+
+def _prefers_ar() -> bool:
+	return "ar" in (frappe.local.lang or frappe.db.get_value("User", frappe.session.user, "language") or "")
+
+
+def _text_excerpt(content: bytes, ext: str) -> str:
+	if ext == "pdf":
+		try:
+			from pypdf import PdfReader
+			import io
+
+			reader = PdfReader(io.BytesIO(content))
+			parts = []
+			for page in reader.pages[:5]:
+				parts.append(page.extract_text() or "")
+			return "\n".join(parts)[:4000]
+		except Exception:
+			return ""
+	return content.decode("utf-8", errors="replace")[:4000]
+
+
+def _images_from_attachments(attachments) -> list[dict]:
+	rows = frappe.parse_json(attachments) if isinstance(attachments, str) else attachments
+	if not rows:
+		return []
+	images = []
+	for row in rows:
+		if not isinstance(row, dict) or row.get("kind") != "image":
+			continue
+		url = row.get("file_url") or ""
+		if not url:
+			continue
+		file_doc = frappe.get_doc("File", {"file_url": url})
+		if file_doc.owner != frappe.session.user and "System Manager" not in frappe.get_roles():
+			frappe.throw("Not your file", frappe.PermissionError)
+		raw = file_doc.get_content()
+		if not raw or len(raw) > 1_500_000:
+			continue
+		import base64
+
+		ext = (file_doc.file_name or "").rsplit(".", 1)[-1].lower()
+		mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/jpeg")
+		images.append({"mime": mime, "b64": base64.b64encode(raw).decode()})
+		if len(images) >= 2:
+			break
+	return images
 
 
 @frappe.whitelist()
@@ -29,11 +134,20 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	if abuse_mod.is_user_blocked():
 		frappe.throw(abuse_mod.blocked_message())
 
+	# Lock the row so a second approval cannot execute the same proposal.
+	frappe.db.sql("select name from `tabERP AI Pending Action` where name=%s for update", pending_action)
 	doc = frappe.get_doc("ERP AI Pending Action", pending_action)
 	if doc.user != frappe.session.user and "System Manager" not in frappe.get_roles():
 		frappe.throw("Not your pending action", frappe.PermissionError)
 	if doc.status != "pending":
 		frappe.throw(f"Action is {doc.status}")
+	settings = frappe.get_single("ERP AI Settings")
+	if not settings.allow_pending_writes:
+		frappe.throw("Writes are disabled in ERP AI Settings")
+	from erpnext_ai_assistant.services.writes import payload_hash
+
+	if (doc.payload_hash or "") != payload_hash(doc.payload_json):
+		frappe.throw("This approval no longer matches the proposed payload", frappe.ValidationError)
 
 	dt = doc.target_doctype
 	action = doc.action_type
@@ -50,7 +164,6 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 
 	doc.acknowledgment_text = acknowledgment_text.strip()
 	doc.acknowledged = 1
-	doc.status = "approved"
 	doc.resolved_by = frappe.session.user
 	doc.resolved_at = frappe.utils.now_datetime()
 
@@ -58,6 +171,13 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	if doc.payload_json:
 		payload = json.loads(doc.payload_json) if isinstance(doc.payload_json, str) else doc.payload_json
 
+	from erpnext_ai_assistant.services.schema import prepare_payload
+
+	if action == "create":
+		checked = prepare_payload(dt, payload, "create", apply_defaults=False)
+		if checked["missing"] or checked["errors"]:
+			frappe.throw("Payload does not satisfy the DocType: " + "; ".join(checked["errors"]))
+		payload = checked["payload"]
 	try:
 		result = _execute(action, dt, doc.target_name, payload)
 		doc.status = "executed"
@@ -65,9 +185,17 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	except Exception as e:
 		doc.status = "failed"
 		doc.result_json = json.dumps({"error": str(e)}, ensure_ascii=False)
-		doc.save()
+		frappe.flags.erp_ai_mutate_pending = True
+		try:
+			doc.save()
+		finally:
+			frappe.flags.erp_ai_mutate_pending = False
 		raise
-	doc.save()
+	frappe.flags.erp_ai_mutate_pending = True
+	try:
+		doc.save()
+	finally:
+		frappe.flags.erp_ai_mutate_pending = False
 	link = result.get("link") if isinstance(result, dict) else None
 	message = _created_message(action, dt, result)
 	if doc.chat and message:
@@ -95,14 +223,21 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 def reject_action(pending_action: str, reason: str | None = None):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
+	frappe.db.sql("select name from `tabERP AI Pending Action` where name=%s for update", pending_action)
 	doc = frappe.get_doc("ERP AI Pending Action", pending_action)
 	if doc.user != frappe.session.user and "System Manager" not in frappe.get_roles():
 		frappe.throw("Not your pending action", frappe.PermissionError)
+	if doc.status != "pending":
+		frappe.throw(f"Cannot reject an action that is {doc.status}")
 	doc.status = "rejected"
 	doc.resolved_by = frappe.session.user
 	doc.resolved_at = frappe.utils.now_datetime()
 	doc.result_json = json.dumps({"reason": reason or ""}, ensure_ascii=False)
-	doc.save()
+	frappe.flags.erp_ai_mutate_pending = True
+	try:
+		doc.save()
+	finally:
+		frappe.flags.erp_ai_mutate_pending = False
 	return {"status": "rejected"}
 
 
@@ -142,7 +277,7 @@ def bootstrap():
 		return {"allowed": False, "reason": "guest"}
 	settings = frappe.get_single("ERP AI Settings")
 	blocked = abuse_mod.is_user_blocked()
-	persona = {"panel_label": "The ERPNext-AI-Assistant", "panel_label_ar": "مساعد ERPNext"}
+	persona = {"panel_label": "ERP Assistant", "panel_label_ar": "مساعد أعمالك"}
 	if settings.active_persona and frappe.db.exists("ERP AI Persona", settings.active_persona):
 		p = frappe.get_doc("ERP AI Persona", settings.active_persona)
 		persona = {
@@ -158,7 +293,16 @@ def bootstrap():
 		"allowed": (not blocked) and bool(settings.enabled),
 		"blocked": blocked,
 		"persona": persona,
+		"branding": {
+			"title": (getattr(settings, "panel_title", None) or "").strip() or "ERP Assistant",
+			"subtitle": (getattr(settings, "panel_subtitle", None) or "").strip() or "مساعد أعمالك",
+			"hint": (getattr(settings, "panel_hint", None) or "").strip()
+			or "يجيب من بيانات العمل المتاحة لك. لا يُنفَّذ أي تعديل قبل موافقتك.",
+			"hint_en": (getattr(settings, "panel_hint_en", None) or "").strip()
+			or "Answers from the business data you can access. Nothing changes until you approve.",
+		},
 		"overlay_pages": pages,
+		"app_routes": _app_routes(),
 		"work_only": bool(settings.work_only),
 		"provider": "openai",
 		"model": settings.model or "gpt-4o-mini",
@@ -175,23 +319,30 @@ def clear_my_memory():
 
 
 def _record_link(doctype: str, name: str) -> dict:
-	"""Desk route plus a CRM route when this DocType lives in the CRM SPA."""
+	"""Open the record on Desk. Any installed app can show this same link."""
 	from urllib.parse import quote
+
+	from erpnext_ai_assistant.services.apps import installed_app_routes
 
 	slug = frappe.scrub(doctype).replace("_", "-")
 	safe = quote(name, safe="")
-	crm_prefix = {
-		"CRM Lead": "/crm/leads/",
-		"CRM Deal": "/crm/deals/",
-		"Contact": "/crm/contacts/",
-		"CRM Organization": "/crm/organizations/",
-	}.get(doctype)
+	app_route = None
+	try:
+		module = frappe.db.get_value("DocType", doctype, "module")
+		app = frappe.local.module_app.get(frappe.scrub(module)) if module else None
+	except Exception:
+		app = None
+	if app:
+		for row in installed_app_routes():
+			if row.get("app") == app and row.get("route"):
+				app_route = row["route"]
+				break
 	return {
 		"doctype": doctype,
 		"name": name,
 		"label": f"{doctype} {name}",
 		"desk_route": f"/desk/{slug}/{safe}",
-		"crm_route": (crm_prefix + safe) if crm_prefix else None,
+		"crm_route": app_route,
 		"route": ["desk", slug, name],
 	}
 
@@ -227,32 +378,17 @@ def _e164(number: str | None, default_region: str = "SA") -> str | None:
 	return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
 
-def _fallback_phone() -> str:
-	"""A real number already stored on the site, used only when the lead has none."""
-	user = frappe.db.get_value("User", frappe.session.user, ["mobile_no", "phone"], as_dict=True) or {}
-	for raw in (user.get("mobile_no"), user.get("phone")):
-		number = _e164(raw)
-		if number:
-			return number
-	for row in frappe.get_all("Company", fields=["phone_no"], limit=20):
-		number = _e164(row.phone_no)
-		if number:
-			return number
-	return "+966500000000"
-
-
 def _execute(action: str, doctype: str, name: str | None, payload: dict):
 	if action == "create":
 		payload = dict(payload or {})
 		note_text = (payload.pop("_note_text", None) or "").strip()
 		lead_name = payload.pop("_lead_name", None)
 		if doctype == "CRM Call Log":
-			caller = _e164(payload.get("from")) or _fallback_phone()
-			called = _e164(payload.get("to")) or caller
-			payload["from"] = caller
-			payload["to"] = called
-			if called == caller and note_text and "no mobile" not in note_text.lower():
-				note_text = note_text + " (lead has no mobile on file)"
+			for key in ("from", "to"):
+				number = _e164(payload.get(key))
+				if not number:
+					frappe.throw(f"{doctype} field {key} needs a real phone number. It was not guessed.")
+				payload[key] = number
 		doc = frappe.get_doc({"doctype": doctype, **payload})
 		doc.insert()
 		if doctype == "CRM Call Log" and doc.get("reference_doctype") and doc.get("reference_docname"):
@@ -273,11 +409,8 @@ def _execute(action: str, doctype: str, name: str | None, payload: dict):
 			doc.note = note.name
 			doc.save()
 		link = _record_link(doctype, doc.name)
-		if doctype == "CRM Call Log" and doc.get("reference_doctype") == "CRM Lead" and doc.get("reference_docname"):
-			from urllib.parse import quote
-
-			link["crm_route"] = "/crm/leads/" + quote(doc.reference_docname, safe="")
-			link["label"] = f"Lead {lead_name or doc.reference_docname}"
+		if lead_name:
+			link["label"] = f"{doctype} {lead_name}"
 		return {"name": doc.name, "link": link}
 	if action == "update":
 		doc = frappe.get_doc(doctype, name)

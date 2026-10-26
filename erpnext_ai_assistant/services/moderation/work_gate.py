@@ -107,6 +107,21 @@ def _installed_app_tokens() -> set[str]:
 	return tokens
 
 
+def _on_installed_app(route: str) -> bool:
+	if route.startswith("/desk") or route.startswith("/app"):
+		return True
+	try:
+		from erpnext_ai_assistant.services.apps import installed_app_routes
+
+		for row in installed_app_routes():
+			pat = (row.get("route") or "").lower().rstrip("/")
+			if pat and (route == pat or route.startswith(pat + "/")):
+				return True
+	except Exception:
+		return False
+	return False
+
+
 def is_work_related(message: str, route: str | None = None) -> bool:
 	text = normalize_arabic(message)
 	raw = (message or "").lower()
@@ -125,12 +140,11 @@ def is_work_related(message: str, route: str | None = None) -> bool:
 		return True
 
 	route = (route or "").lower()
-	if route.startswith("/crm") or "/app/" in route:
+	if _on_installed_app(route):
 		for pat in WORK_CUES:
 			if re.search(pat, combined, re.I):
 				return True
-		# Short operational questions on CRM still allowed
-		if route.startswith("/crm") and len((message or "").strip()) <= 120:
+		if len((message or "").strip()) <= 120:
 			return True
 	for pat in WORK_CUES:
 		if re.search(pat, combined, re.I):

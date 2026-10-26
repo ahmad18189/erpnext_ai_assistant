@@ -5,8 +5,8 @@
 
   var I18N = {
     ar: {
-      brand: "The ERPNext-AI-Assistant",
-      subtitle: "مساعد ERPNext",
+      brand: "ERP Assistant",
+      subtitle: "مساعد أعمالك",
       chat: "محادثة",
       history: "السجل",
       newChat: "جديد",
@@ -23,15 +23,19 @@
       ackCheck: "راجعت التغيير وأوافق على تنفيذه",
       approve: "موافقة",
       reject: "رفض",
-      workOnly: "مساعد عمل لنظام ERP — ليس ChatGPT عام.",
+      workOnly: "يجيب من بيانات العمل المتاحة لك. لا يُنفَّذ أي تعديل قبل موافقتك.",
+      attach: "إرفاق ملف أو صورة",
+      template: "تنزيل القالب",
       loading: "جارٍ المعالجة…",
       open: "فتح المساعد",
+      expand: "توسيع",
+      shrink: "الحجم الأصلي",
       noHistory: "لا توجد محادثات بعد.",
       error: "تعذّر إكمال الطلب. حاول مرة أخرى.",
     },
     en: {
-      brand: "The ERPNext-AI-Assistant",
-      subtitle: "ERP workplace assistant",
+      brand: "ERP Assistant",
+      subtitle: "Your business assistant",
       chat: "Chat",
       history: "History",
       newChat: "New",
@@ -48,9 +52,13 @@
       ackCheck: "I reviewed and authorize this change",
       approve: "Approve",
       reject: "Reject",
-      workOnly: "Workplace ERP assistant — not a general ChatGPT.",
+      workOnly: "Answers from the business data you can access. Nothing changes until you approve.",
+      attach: "Attach a file or image",
+      template: "Download template",
       loading: "Working…",
       open: "Open assistant",
+      expand: "Expand",
+      shrink: "Original size",
       noHistory: "No chats yet.",
       error: "Could not finish. Please try again.",
     },
@@ -145,8 +153,10 @@
       }
       return false;
     }
+    var appRoutes = (state.boot && state.boot.app_routes) || [];
+    if (appRoutes.some(function (row) { return hit(row && row.route); })) return true;
     if (!pages || !pages.length) {
-      return hit("/crm") || hit("/desk") || hit("/app");
+      return hit("/desk") || hit("/app");
     }
     return pages.some(function (p) {
       return p && p.enabled && hit(p.path_pattern || "");
@@ -156,13 +166,30 @@
   var state = {
     lang: detectLang(),
     open: false,
+    files: [],
     tab: "chat",
     chatId: null,
     boot: null,
     pending: null,
     steps: [],
     thinkingMs: 0,
+    expanded: false,
   };
+  try {
+    state.expanded = sessionStorage.getItem("erp-ai-expanded") === "1";
+  } catch (e) {}
+
+  var EXPAND_ICON =
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9V4h5v2H6v3H4zm10-5h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm13 3v-3h2v5h-5v-2h3z"/></svg>';
+  var SHRINK_ICON =
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M9 4v3H6v2h5V4H9zm4 0v5h5V7h-3V4h-2zM4 13v2h3v3h2v-5H4zm9 0v5h2v-3h3v-2h-5z"/></svg>';
+
+  function textNode(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    n.textContent = text == null ? "" : String(text);
+    return n;
+  }
 
   function el(tag, cls, html) {
     var n = document.createElement(tag);
@@ -175,7 +202,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai11";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai18";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -252,15 +279,16 @@
       return;
     }
     root.classList.remove("erp-ai-closed");
+    root.classList.toggle("erp-ai-expanded", !!state.expanded);
     fab.hidden = true;
 
-    var persona =
-      (state.boot && state.boot.persona) || {
-        panel_label: t("brand"),
-        panel_label_ar: t("subtitle"),
-      };
-    var title = state.lang === "ar" ? persona.panel_label_ar || t("subtitle") : persona.panel_label || t("brand");
-    var brandMain = t("brand");
+    var branding = (state.boot && state.boot.branding) || {};
+    var brandMain = branding.title || t("brand");
+    var brandSub = branding.subtitle || t("subtitle");
+    var hint =
+      state.lang === "ar"
+        ? branding.hint || t("workOnly")
+        : branding.hint_en || t("workOnly");
 
     root.innerHTML = "";
     root.setAttribute("dir", "rtl");
@@ -268,8 +296,8 @@
 
     var header = el("div", "erp-ai-header");
     var brand = el("div", "erp-ai-brand");
-    brand.appendChild(el("strong", "", brandMain));
-    brand.appendChild(el("span", "", title));
+    brand.appendChild(textNode("strong", "", brandMain));
+    brand.appendChild(textNode("span", "", brandSub));
     header.appendChild(brand);
     var actions = el("div", "erp-ai-header-actions");
     var langBtn = el("button", "", state.lang === "ar" ? "EN" : "ع");
@@ -277,6 +305,22 @@
     langBtn.addEventListener("click", function () {
       state.lang = state.lang === "ar" ? "en" : "ar";
       render();
+    });
+    var sizeBtn = el("button", "erp-ai-size", state.expanded ? SHRINK_ICON : EXPAND_ICON);
+    sizeBtn.type = "button";
+    sizeBtn.title = state.expanded ? t("shrink") : t("expand");
+    sizeBtn.setAttribute("aria-label", sizeBtn.title);
+    sizeBtn.setAttribute("aria-pressed", state.expanded ? "true" : "false");
+    sizeBtn.addEventListener("click", function () {
+      state.expanded = !state.expanded;
+      try {
+        sessionStorage.setItem("erp-ai-expanded", state.expanded ? "1" : "0");
+      } catch (e) {}
+      root.classList.toggle("erp-ai-expanded", state.expanded);
+      sizeBtn.title = state.expanded ? t("shrink") : t("expand");
+      sizeBtn.setAttribute("aria-label", sizeBtn.title);
+      sizeBtn.setAttribute("aria-pressed", state.expanded ? "true" : "false");
+      sizeBtn.innerHTML = state.expanded ? SHRINK_ICON : EXPAND_ICON;
     });
     var neu = el("button", "", t("newChat"));
     neu.addEventListener("click", function () {
@@ -293,6 +337,7 @@
     });
     actions.appendChild(langBtn);
     actions.appendChild(neu);
+    actions.appendChild(sizeBtn);
     actions.appendChild(close);
     header.appendChild(actions);
     root.appendChild(header);
@@ -330,12 +375,45 @@
     body.appendChild(el("div", "erp-ai-empty", t("empty")));
 
     var composer = el("div", "erp-ai-composer");
+    if (state.files.length) {
+      var chips = el("div", "erp-ai-files");
+      state.files.forEach(function (file, index) {
+        var chip = el("button", "erp-ai-file-chip", "");
+        chip.type = "button";
+        chip.appendChild(textNode("span", "", file.name));
+        chip.addEventListener("click", function () {
+          state.files.splice(index, 1);
+          render();
+        });
+        chips.appendChild(chip);
+      });
+      composer.appendChild(chips);
+    }
     var ta = el("textarea");
     ta.id = "erp-ai-input";
     ta.placeholder = t("placeholder");
     ta.setAttribute("dir", "auto");
     var row = el("div", "erp-ai-composer-row");
-    row.appendChild(el("div", "erp-ai-hint", t("workOnly")));
+    var fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.multiple = true;
+    fileInput.accept = "image/*,.csv,.xlsx,.txt,.pdf";
+    fileInput.hidden = true;
+    fileInput.addEventListener("change", function () {
+      Array.prototype.forEach.call(fileInput.files || [], function (file) {
+        state.files.push(file);
+      });
+      render();
+    });
+    var attach = el("button", "erp-ai-attach", "+");
+    attach.type = "button";
+    attach.title = t("attach");
+    attach.addEventListener("click", function () {
+      fileInput.click();
+    });
+    row.appendChild(attach);
+    row.appendChild(fileInput);
+    row.appendChild(textNode("div", "erp-ai-hint", hint));
     var send = el("button", "primary", t("send"));
     send.addEventListener("click", onSend);
     row.appendChild(send);
@@ -356,23 +434,44 @@
     var text = String(content || "").replace(
       /\[\[open:([^\]|]+)\|([^\]|]+)(?:\|([^\]]*))?\]\]/g,
       function (_m, path, label, crm) {
-        links.push({ desk_route: path, label: label, crm_route: crm || null });
+        links.push({
+          desk_route: safeLocalPath(path),
+          label: label,
+          crm_route: safeLocalPath(crm || ""),
+        });
         return "";
       }
     );
     return { text: text.replace(/\n+$/, "").trim(), links: links };
   }
 
+  function safeLocalPath(path) {
+    if (!path || typeof path !== "string") return "";
+    if (path.indexOf("://") !== -1 || path.indexOf("//") === 0 || path.indexOf("\\") !== -1) return "";
+    if (path.charAt(0) !== "/") return "";
+    if (path.indexOf("/desk/") === 0) return path;
+    var routes = (state.boot && state.boot.app_routes) || [];
+    for (var i = 0; i < routes.length; i++) {
+      var route = (routes[i] && routes[i].route) || "";
+      if (route && (path === route || path.indexOf(route.replace(/\/$/, "") + "/") === 0)) return path;
+    }
+    return "";
+  }
+
   function openRecordButton(link) {
+    var onCrm = (location.pathname || "").indexOf("/crm") === 0;
+    var path = safeLocalPath((onCrm && link.crm_route) || link.desk_route || "");
     var a = el("a", "erp-ai-open-link");
-    a.href = (location.pathname.indexOf("/crm") === 0 && link.crm_route) || link.desk_route || "#";
+    a.href = path || "#";
     a.textContent = link.label || t("openRecord");
     a.addEventListener("click", function (ev) {
-      var onCrm = (location.pathname || "").indexOf("/crm") === 0;
-      var path = (onCrm && link.crm_route) || link.desk_route;
-      if (!path) return;
-      if (onCrm && link.crm_route) {
-        window.location.assign(link.crm_route);
+      var path = safeLocalPath((onCrm && link.crm_route) || link.desk_route || "");
+      if (!path) {
+        ev.preventDefault();
+        return;
+      }
+      if (onCrm && path.indexOf("/crm/") === 0) {
+        window.location.assign(path);
         ev.preventDefault();
         return;
       }
@@ -390,6 +489,123 @@
     return a;
   }
 
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function inlineMd(value) {
+    var codes = [];
+    var s = String(value || "").replace(/`([^`]+)`/g, function (_m, code) {
+      codes.push(code);
+      return "\u0000" + (codes.length - 1) + "\u0000";
+    });
+    s = s.replace(/\[([^\]<]+)\]\((https?:\/\/[^)\s]+)\)/g, function (_m, label, url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + "</a>";
+    });
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    return s.replace(/\u0000(\d+)\u0000/g, function (_m, index) {
+      return "<code>" + codes[Number(index)] + "</code>";
+    });
+  }
+
+  function listKind(line) {
+    if (/^\s*\d+[.)]\s+/.test(line || "")) return "ol";
+    if (/^\s*[-*]\s+/.test(line || "")) return "ul";
+    return "";
+  }
+
+  function listItemText(line) {
+    return String(line || "").replace(/^\s*(?:[-*]|\d+[.)])\s+/, "");
+  }
+
+  function readList(lines, i, kind) {
+    var items = [];
+    while (i < lines.length) {
+      var probe = i;
+      while (probe < lines.length && !String(lines[probe]).trim()) probe += 1;
+      if (probe >= lines.length) {
+        i = probe;
+        break;
+      }
+      var line = lines[probe];
+      var kindNow = listKind(line);
+      if (kindNow === "ul" && kind === "ol" && items.length) {
+        var nested = readList(lines, probe, "ul");
+        items[items.length - 1] = items[items.length - 1].replace(/<\/li>$/, nested.html + "</li>");
+        i = nested.i;
+        continue;
+      }
+      if (kindNow !== kind) break;
+      i = probe + 1;
+      var html = "<li>" + inlineMd(escapeHtml(listItemText(line)));
+      while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !listKind(lines[i])) {
+        html += "<br>" + inlineMd(escapeHtml(String(lines[i]).trim()));
+        i += 1;
+      }
+      html += "</li>";
+      items.push(html);
+    }
+    return { html: "<" + kind + ">" + items.join("") + "</" + kind + ">", i: i };
+  }
+
+  function renderMarkdown(text) {
+    var lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+    var out = [];
+    var para = [];
+    var i = 0;
+    function flushPara() {
+      if (!para.length) return;
+      out.push("<p>" + inlineMd(escapeHtml(para.join("\n")).replace(/\n/g, "<br>")) + "</p>");
+      para = [];
+    }
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^```/.test(line)) {
+        flushPara();
+        var buf = [];
+        i += 1;
+        while (i < lines.length && !/^```/.test(lines[i])) {
+          buf.push(escapeHtml(lines[i]));
+          i += 1;
+        }
+        if (i < lines.length) i += 1;
+        out.push("<pre><code>" + buf.join("\n") + "</code></pre>");
+        continue;
+      }
+      if (!String(line).trim()) {
+        flushPara();
+        i += 1;
+        continue;
+      }
+      var heading = /^(#{1,3})\s+(.+)$/.exec(line);
+      if (heading) {
+        flushPara();
+        var level = heading[1].length;
+        out.push("<h" + level + ">" + inlineMd(escapeHtml(heading[2])) + "</h" + level + ">");
+        i += 1;
+        continue;
+      }
+      var kind = listKind(line);
+      if (kind) {
+        flushPara();
+        var list = readList(lines, i, kind);
+        out.push(list.html);
+        i = list.i;
+        continue;
+      }
+      para.push(line);
+      i += 1;
+    }
+    flushPara();
+    return out.join("");
+  }
+
   function appendMsg(role, content, extra) {
     var body = document.getElementById("erp-ai-body");
     if (!body) return;
@@ -399,7 +615,12 @@
     if (extra && extra.thinking) wrap.appendChild(extra.thinking);
     var parsed = parseOpenLinks(content || "");
     var bubble = el("div", "bubble");
-    bubble.textContent = parsed.text;
+    if (role === "assistant") {
+      bubble.classList.add("erp-ai-md");
+      bubble.innerHTML = renderMarkdown(parsed.text);
+    } else {
+      bubble.textContent = parsed.text;
+    }
     bubble.setAttribute("dir", hasArabic(parsed.text) ? "rtl" : "auto");
     wrap.appendChild(bubble);
     (parsed.links || []).forEach(function (link) {
@@ -422,21 +643,31 @@
   function thinkingBlock(steps, ms) {
     var det = el("details", "erp-ai-thinking");
     det.id = "erp-ai-thinking-live";
-    if (steps && steps.some(function (s) {
-      return s.status === "running";
-    })) {
-      det.open = true;
-    }
+    det.open = true;
     var sum = el("summary");
     sum.textContent = ms
       ? t("thoughtFor").replace("{0}", String(Math.max(1, Math.round(ms / 1000))))
       : t("thinking");
     det.appendChild(sum);
     var ol = el("ol");
+    var unique = [];
+    var seen = {};
     (steps || []).forEach(function (s) {
+      if (!s) return;
+      if (s.id && seen[s.id]) {
+        unique[seen[s.id] - 1] = s;
+        return;
+      }
+      unique.push(s);
+      if (s.id) seen[s.id] = unique.length;
+    });
+    unique.forEach(function (s) {
       var li = el("li");
       li.dataset.status = s.status || "";
-      li.textContent = (state.lang === "ar" ? s.label_ar : s.label_en) || s.tool || "";
+      var label = (state.lang === "ar" ? s.label_ar : s.label_en) || s.tool || "";
+      li.appendChild(textNode("div", "erp-ai-step-label", label));
+      var detail = state.lang === "ar" ? s.detail_ar || s.detail : s.detail || s.detail_ar;
+      if (detail) li.appendChild(textNode("div", "erp-ai-step-detail", detail));
       ol.appendChild(li);
     });
     det.appendChild(ol);
@@ -803,8 +1034,8 @@
 
   function renderAck(pending) {
     var box = el("div", "erp-ai-ack");
-    box.appendChild(el("strong", "", t("ackTitle")));
-    box.appendChild(el("div", "", (pending && pending.summary) || ""));
+    box.appendChild(textNode("strong", "", t("ackTitle")));
+    box.appendChild(textNode("div", "", (pending && pending.summary) || ""));
     var lab = el("label");
     var cb = document.createElement("input");
     cb.type = "checkbox";
@@ -837,30 +1068,100 @@
     return box;
   }
 
+  function uploadFile(file) {
+    var body = new FormData();
+    body.append("file", file);
+    return fetch("/api/method/erpnext_ai_assistant.api.chat.upload_attachment", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "X-Frappe-CSRF-Token": csrf(), Accept: "application/json" },
+      body: body,
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (j.exc || (r.status >= 400 && j.message == null)) {
+          throw new Error(j.exc_type || t("error"));
+        }
+        return j.message != null ? j.message : j;
+      });
+    });
+  }
+
+  function downloadTemplate(doctype) {
+    call("erpnext_ai_assistant.api.chat.blank_import_template", { doctype: doctype }).then(function (res) {
+      var blob = new Blob([res.csv || ""], { type: "text/csv;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename || doctype + ".csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  function renderImportReview(review) {
+    var box = el("div", "erp-ai-import");
+    (review.templates || []).forEach(function (item) {
+      var line = textNode(
+        "div",
+        "",
+        item.doctype + " — " + Math.round((item.score || 0) * 100) + "%"
+      );
+      box.appendChild(line);
+      var btn = el("button", "", t("template") + " " + item.doctype);
+      btn.type = "button";
+      btn.addEventListener("click", function () {
+        downloadTemplate(item.doctype);
+      });
+      box.appendChild(btn);
+    });
+    return box;
+  }
+
   function onSend() {
     var ta = document.getElementById("erp-ai-input");
     if (!ta) return;
     var msg = (ta.value || "").trim();
-    if (!msg) return;
+    var files = state.files.slice();
+    if (!msg && !files.length) return;
     if (hasArabic(msg)) state.lang = "ar";
     ta.value = "";
-    appendMsg("user", msg);
+    state.files = [];
+    appendMsg("user", msg || files.map(function (file) { return file.name; }).join(", "));
     state.steps = [];
     state.thinkingMs = 0;
     var started = Date.now();
     var think = thinkingBlock(state.steps, 0);
     var asstWrap = appendMsg("assistant", t("loading"), { thinking: think });
-    call("erpnext_ai_assistant.api.chat.run", {
-      message: msg,
-      route: location.pathname,
-      chat_id: state.chatId || "",
-    })
+    var uploads = Promise.all(files.map(uploadFile));
+    uploads
+      .then(function (uploaded) {
+        var notes = [];
+        var images = [];
+        var reviews = [];
+        (uploaded || []).forEach(function (item) {
+          if (!item) return;
+          if (item.kind === "image") images.push(item);
+          if (item.review_text) notes.push(item.review_text);
+          if (item.excerpt) notes.push(item.excerpt);
+          if (item.review) reviews.push(item.review);
+        });
+        var full = [msg].concat(notes).filter(Boolean).join("\n\n");
+        return call("erpnext_ai_assistant.api.chat.run", {
+          message: full || msg || "Review the attached file.",
+          route: location.pathname,
+          chat_id: state.chatId || "",
+          attachments: JSON.stringify(images),
+        }).then(function (res) {
+          res._reviews = reviews;
+          return res;
+        });
+      })
       .then(function (res) {
         state.chatId = res.chat_id || state.chatId;
         state.steps = res.steps || state.steps;
         state.thinkingMs = Date.now() - started;
         if (asstWrap && asstWrap.parentNode) asstWrap.parentNode.removeChild(asstWrap);
-        appendMsg("assistant", res.message || "", {
+        var bubble = appendMsg("assistant", res.message || "", {
           thinking: thinkingBlock(state.steps, state.thinkingMs),
           charts: res.charts || [],
           ack: res.pending_action
@@ -869,6 +1170,9 @@
                 summary: res.pending_summary || res.message || "",
               }
             : null,
+        });
+        (res._reviews || []).forEach(function (review) {
+          if (bubble) bubble.appendChild(renderImportReview(review));
         });
       })
       .catch(function (err) {

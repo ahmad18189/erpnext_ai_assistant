@@ -120,7 +120,15 @@
   {
    "fieldname": "payload_json",
    "fieldtype": "JSON",
-   "label": "Payload JSON"
+   "label": "Payload JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payload_hash",
+   "fieldtype": "Data",
+   "label": "Payload Hash",
+   "read_only": 1,
+   "description": "SHA-256 of the payload shown on the approval card."
   },
   {
    "fieldname": "tab_resolution",

@@ -31,9 +31,7 @@ APP_HINT = re.compile(r"\b(app|module|installed|تطبيق)\b", re.I)
 CREATE_LEAD = re.compile(
 	r"(create|add|make)\s+(a\s+|new\s+|me\s+)?(a\s+)?lead"
 	r"|new\s+lead"
-	r"|can you create"
-	r"|make you create"
-	r"|إنشاء\s*(عميل|ليد)"
+	r"|إنشاء\s*(عميل\s*محتمل|ليد)"
 	r"|أضف\s*(عميل|ليد)"
 	r"|عميل\s*جديد",
 	re.I,
@@ -55,7 +53,7 @@ def gather_context(
 	recent_user_texts: list[str] | None = None,
 ) -> dict:
 	"""Return {tool_parts, charts, steps, pending}."""
-	msg = message or ""
+	msg = _normalize_request(message or "")
 	msg_l = msg.lower()
 	route = route or ""
 	facts = session_facts or {}
@@ -208,6 +206,15 @@ def gather_context(
 		)
 		add_step("orgs", "المنشآت", "Organizations", "tool_erp_query")
 
+	if pending is None:
+		from erpnext_ai_assistant.services.schema import propose_schema_write
+
+		generic = propose_schema_write(
+			msg, chat_id=chat_id, lang=lang, pending_intent=facts.get("pending_intent")
+		)
+		if generic:
+			pending = generic
+			tool_parts.append("SCHEMA WRITE:\n" + frappe.as_json(generic)[:4000])
 	return {"tool_parts": tool_parts, "charts": charts, "steps": steps, "pending": pending}
 
 
@@ -255,10 +262,26 @@ def _parse_create_lead(message: str) -> dict:
 	return payload
 
 
+def _normalize_request(text: str) -> str:
+	"""Correct common DocType typos so 'cutomer' is not handled as a lead."""
+	fixed = text or ""
+	fixed = re.sub(r"\bcutomers?\b|\bcustmers?\b|\bcusotmers?\b|\bcostomers?\b", "customer", fixed, flags=re.I)
+	fixed = re.sub(r"\bcomanys?\b|\bcompanys?\b", "company", fixed, flags=re.I)
+	return fixed
+
+
 def _create_lead_source(message: str, facts: dict, recent: list[str]) -> str | None:
 	"""Pick the text that should drive a create-lead proposal, including short follow-ups."""
+	from erpnext_ai_assistant.services.schema import resolve_doctype
+
 	msg = message or ""
-	prior_create = facts.get("pending_intent") == "create_lead" or any(
+	named = resolve_doctype(msg)
+	if named and named not in ("Lead", "CRM Lead"):
+		return None
+	intent = facts.get("pending_intent") or ""
+	if intent.startswith("create:") and intent.split(":", 1)[1] not in ("Lead", "CRM Lead"):
+		return None
+	prior_create = intent in ("create_lead", "create:Lead", "create:CRM Lead") or any(
 		CREATE_LEAD.search(t or "") for t in recent
 	)
 	if not (
@@ -364,46 +387,53 @@ def _propose_create_call(message: str, recent: list[str], chat_id: str | None, l
 		}
 	minutes = _call_minutes_ago(blob)
 	from frappe.utils import add_to_date, now_datetime
+	from erpnext_ai_assistant.services.schema import _e164, missing_message, prepare_payload
 
-	started = add_to_date(now_datetime(), minutes=-minutes) if minutes else now_datetime()
-	phone = (lead.get("mobile_no") or "").strip()
 	note = _call_note(blob)
+	who = lead.get("lead_name") or lead.get("name")
 	payload = {
-		"type": "Outgoing",
-		"status": "Completed",
-		"telephony_medium": "Manual",
-		"from": phone,
-		"to": phone,
-		"start_time": str(started),
-		"duration": 60,
-		"caller": frappe.session.user,
 		"reference_doctype": "CRM Lead",
 		"reference_docname": lead.get("name"),
 		"_note_text": note,
-		"_lead_name": lead.get("lead_name") or lead.get("name"),
+		"_lead_name": who,
 	}
-	who = payload["_lead_name"]
-	if lang == "ar":
-		summary = f"إضافة مكالمة صادرة مكتملة للعميل {who} ({lead.get('name')})"
-		if note:
-			summary += f" — الملاحظة: {note}"
-		if minutes:
-			summary += f" — قبل {minutes} دقائق"
-	else:
-		summary = f"Add a completed outgoing call on lead {who} ({lead.get('name')})"
-		if note:
-			summary += f" — note: {note}"
-		if minutes:
-			summary += f" — {minutes} minutes ago"
+	if minutes:
+		payload["start_time"] = str(add_to_date(now_datetime(), minutes=-minutes))
+	if re.search(r"outgoing|صادرة", blob, re.I):
+		payload["type"] = "Outgoing"
+		payload["caller"] = frappe.session.user
+	elif re.search(r"incoming|واردة", blob, re.I):
+		payload["type"] = "Incoming"
+		payload["receiver"] = frappe.session.user
+	for status_name in ("Completed", "Initiated", "Ringing", "In Progress", "Failed", "Busy", "No Answer", "Queued", "Canceled"):
+		if status_name.lower() in blob.lower():
+			payload["status"] = status_name
+			break
+	lead_phone = _e164(lead.get("mobile_no"))
+	if lead_phone:
+		payload["to"] = lead_phone
+	mentioned = re.findall(r"\+?\d[\d\s\-()]{7,}\d", blob)
+	for raw_number in mentioned:
+		number = _e164(raw_number)
+		if number and number != lead_phone and "from" not in payload:
+			payload["from"] = number
+	prepared = prepare_payload("CRM Call Log", payload, "create")
+	if prepared["missing"] or prepared["errors"]:
+		return {
+			"error": "missing_required",
+			"status": "need_input",
+			"message_en": missing_message("CRM Call Log", prepared, "en"),
+			"message_ar": missing_message("CRM Call Log", prepared, "ar"),
+		}
+	payload = prepared["payload"]
 	if not chat_id:
-		return {"error": "missing_chat", "status": "failed", "summary": summary}
+		return {"error": "missing_chat", "status": "failed"}
 	try:
 		return tools.propose_write(
 			chat=chat_id,
 			action_type="create",
 			target_doctype="CRM Call Log",
 			payload=payload,
-			summary=summary,
 		)
 	except Exception as e:
 		return {"error": str(e), "status": "failed", "message_en": str(e), "message_ar": str(e)}
@@ -419,34 +449,26 @@ def _propose_create_lead(message: str, chat_id: str | None, lang: str) -> dict:
 			"message_ar": "لا تملك صلاحية إنشاء عميل محتمل (CRM Lead).",
 			"message_en": "You do not have permission to create CRM Lead.",
 		}
-	payload = _parse_create_lead(message)
-	if not payload.get("first_name"):
+	raw = _parse_create_lead(message)
+	raw.pop("status", None)
+	from erpnext_ai_assistant.services.schema import missing_message, prepare_payload
+
+	prepared = prepare_payload("CRM Lead", raw, "create")
+	if prepared["missing"] or prepared["errors"]:
 		return {
-			"error": "missing_name",
+			"error": "missing_required",
 			"status": "need_input",
-			"message_ar": "يرجى تحديد اسم العميل المحتمل.",
-			"message_en": "Please provide the lead name.",
+			"message_ar": missing_message("CRM Lead", prepared, "ar"),
+			"message_en": missing_message("CRM Lead", prepared, "en"),
 		}
-	label = payload.get("lead_name") or payload.get("first_name")
-	if lang == "ar":
-		summary = f"إنشاء عميل محتمل جديد: {label}"
-		if payload.get("email"):
-			summary += f" — البريد: {payload['email']}"
-		summary += f" — الحالة: {payload.get('status')}"
-	else:
-		summary = f"Create CRM Lead: {label}"
-		if payload.get("email"):
-			summary += f" — email: {payload['email']}"
-		summary += f" — status: {payload.get('status')}"
 	try:
 		if not chat_id:
-			return {"error": "missing_chat", "status": "failed", "payload": payload, "summary": summary}
+			return {"error": "missing_chat", "status": "failed"}
 		return tools.propose_write(
 			chat=chat_id,
 			action_type="create",
 			target_doctype="CRM Lead",
-			payload=payload,
-			summary=summary,
+			payload=prepared["payload"],
 		)
 	except Exception as e:
 		return {"error": str(e), "status": "failed", "payload": payload, "summary": summary}
@@ -474,7 +496,9 @@ def _crm_lead_summary() -> dict:
 	return {
 		"doctype": "CRM Lead",
 		"visible_count": total,
+		"sample_limit": 200,
 		"count_capped_at_200": capped,
+		"sample_note": "At most 200 leads visible to the current user. This is not a full-table total when capped.",
 		"by_status": by_status,
 		"by_owner": by_owner,
 		"sample_leads": sample,
@@ -492,7 +516,10 @@ def _lead_group_chart(field: str, lang: str) -> dict | None:
 		title = "العملاء حسب المالك" if field == "lead_owner" else "العملاء حسب الحالة"
 	else:
 		title = "Leads by owner" if field == "lead_owner" else "Leads by status"
-	return build_chart(ctype, title, list(c.keys()), [float(v) for v in c.values()])
+	chart = build_chart(ctype, title, list(c.keys()), [float(v) for v in c.values()])
+	chart["sample_limit"] = 200
+	chart["sample_note"] = "Chart uses at most 200 leads the current user can read, not a full total."
+	return chart
 
 
 def _invoice_summary() -> dict:
@@ -512,7 +539,9 @@ def _invoice_summary() -> dict:
 			"sample": rows[:10],
 			"status_breakdown": dict(Counter((r.get("status") or "Unknown") for r in rows)),
 		}
-	out["zatca"] = "ZATCA/e-invoice status is unavailable on this site (no ZATCA app installed)."
+	out["sample_limit"] = 30
+	out["sample_note"] = "Each invoice block is a sample of at most 30 rows the current user can read, not a full total."
+	out["zatca"] = "E-invoice clearance status is not read unless an e-invoicing app is installed."
 	return out
 
 

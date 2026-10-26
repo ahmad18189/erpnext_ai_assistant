@@ -86,6 +86,15 @@ def _ensure_settings():
 		if not doc.model:
 			doc.model = "gpt-4o-mini"
 			changed = True
+		for fieldname, value in (
+			("panel_title", "ERP Assistant"),
+			("panel_subtitle", "مساعد أعمالك"),
+			("panel_hint", "يجيب من بيانات العمل المتاحة لك. لا يُنفَّذ أي تعديل قبل موافقتك."),
+			("panel_hint_en", "Answers from the business data you can access. Nothing changes until you approve."),
+		):
+			if frappe.get_meta("ERP AI Settings").has_field(fieldname) and not (doc.get(fieldname) or "").strip():
+				doc.set(fieldname, value)
+				changed = True
 		# Prefer site_config over baking secrets into code
 		site_key = frappe.conf.get("erp_ai_openai_api_key")
 		if site_key and not doc.api_key:
@@ -119,11 +128,21 @@ def _seed_settings_children():
 	if not doc.notify_roles:
 		doc.append("notify_roles", {"role": "System Manager"})
 		changed = True
+	from erpnext_ai_assistant.services.apps import installed_app_routes
+
 	wanted_overlays = [
-		{"path_pattern": "/crm", "label": "CRM SPA", "host_hint": "crm_spa", "enabled": 1},
 		{"path_pattern": "/desk", "label": "Desk", "host_hint": "desk", "enabled": 1},
 		{"path_pattern": "/app", "label": "Desk (legacy /app)", "host_hint": "desk", "enabled": 1},
 	]
+	for app_route in installed_app_routes():
+		wanted_overlays.append(
+			{
+				"path_pattern": app_route["route"],
+				"label": app_route["title"] or app_route["app"],
+				"host_hint": "app",
+				"enabled": 1,
+			}
+		)
 	existing = {(r.path_pattern or "") for r in (doc.overlay_pages or [])}
 	for row in wanted_overlays:
 		if row["path_pattern"] not in existing:

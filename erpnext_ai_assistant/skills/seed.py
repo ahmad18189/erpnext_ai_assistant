@@ -13,7 +13,7 @@ SKILL_SEEDS = [
 		"title": "Site installed apps",
 		"enabled": 1,
 		"priority": 5,
-		"routes": "/crm\n/app",
+		"routes": "",
 		"doctypes": "",
 		"roles": [
 			{"role": "System Manager"},

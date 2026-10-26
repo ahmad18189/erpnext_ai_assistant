@@ -38,6 +38,7 @@ def complete(
 	tool_context: str = "",
 	history: list[dict] | None = None,
 	chat_summary: str = "",
+	images: list[dict] | None = None,
 ) -> str:
 	"""Run chat completion with optional multi-turn history + rolling summary."""
 	from erpnext_ai_assistant.services.conversation import build_messages
@@ -57,32 +58,46 @@ def complete(
 		history=history or [],
 		user_message=user,
 		chat_summary=chat_summary or "",
+		images=images or [],
 	)
 
-	body = json.dumps(
-		{
-			"model": model,
-			"temperature": float(settings.temperature or 0.2),
-			"max_tokens": int(settings.max_tokens or 2048),
-			"messages": messages,
-		}
-	).encode()
+	try:
+		message = chat_message(messages, tools=None, settings=settings, api_key=api_key, base=base, model=model)
+		return message.get("content") or ""
+	except Exception:
+		frappe.log_error(title="ERP AI LLM call failed")
+		return _fallback(user, tool_context)
+
+
+def chat_message(messages: list[dict], tools: list | None = None, settings=None, api_key: str | None = None, base: str | None = None, model: str | None = None) -> dict:
+	"""One chat completion. Returns the assistant message, including tool_calls when tools are set."""
+	settings = settings or frappe.get_single("ERP AI Settings")
+	api_key = api_key or get_openai_api_key(settings)
+	base = (base or settings.provider_base_url or DEFAULT_OPENAI_BASE).rstrip("/")
+	model = model or settings.model or DEFAULT_MODEL
+	if not api_key:
+		raise frappe.ValidationError("No model key")
+	payload = {
+		"model": model,
+		"temperature": float(settings.temperature or 0.2),
+		"max_tokens": int(settings.max_tokens or 2048),
+		"messages": messages,
+	}
+	if tools:
+		payload["tools"] = tools
+		payload["tool_choice"] = "auto"
 	req = urllib.request.Request(
 		f"{base}/chat/completions",
-		data=body,
+		data=json.dumps(payload).encode(),
 		headers={
 			"Content-Type": "application/json",
 			"Authorization": f"Bearer {api_key}",
 		},
 		method="POST",
 	)
-	try:
-		with urllib.request.urlopen(req, timeout=60) as resp:
-			data = json.loads(resp.read().decode())
-		return data["choices"][0]["message"]["content"]
-	except Exception:
-		frappe.log_error(title="ERP AI LLM call failed")
-		return _fallback(user, tool_context)
+	with urllib.request.urlopen(req, timeout=60) as resp:
+		data = json.loads(resp.read().decode())
+	return data["choices"][0]["message"]
 
 
 def _fallback(user: str, tool_context: str) -> str:

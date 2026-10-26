@@ -178,29 +178,51 @@ def read_skill(title: str | None = None, route: str | None = None) -> list[dict]
 	return out
 
 
-def propose_write(chat: str, action_type: str, target_doctype: str, payload: dict, summary: str, target_name: str | None = None, message: str | None = None) -> dict:
+def propose_write(chat: str, action_type: str, target_doctype: str, payload: dict, summary: str | None = None, target_name: str | None = None, message: str | None = None) -> dict:
 	settings = frappe.get_single("ERP AI Settings")
 	if not settings.allow_pending_writes:
 		frappe.throw("Writes are disabled in ERP AI Settings")
 	from erpnext_ai_assistant.services.naming import as_title
+	from erpnext_ai_assistant.services.schema import prepare_payload
+	from erpnext_ai_assistant.services.writes import payload_hash, summary_from_payload
 
+	if action_type == "create":
+		prepared = prepare_payload(target_doctype, payload or {}, "create")
+		if prepared["missing"] or prepared["errors"]:
+			frappe.throw(
+				"Refusing to propose an incomplete write: "
+				+ ", ".join(item.get("fieldname") or "" for item in prepared["missing"])
+				+ " "
+				+ "; ".join(prepared["errors"])
+			)
+		payload = prepared["payload"]
+	body = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True, default=str)
+	card = summary_from_payload(action_type, target_doctype, payload or {}, target_name)
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Pending Action",
-			"title": as_title("ERP AI Pending Action", summary or f"{action_type} {target_doctype}"),
+			"title": as_title("ERP AI Pending Action", card[:80] or f"{action_type} {target_doctype}"),
 			"chat": chat,
 			"message": message,
 			"user": frappe.session.user,
 			"action_type": action_type,
 			"target_doctype": target_doctype,
 			"target_name": target_name,
-			"payload_json": json.dumps(payload or {}, ensure_ascii=False),
-			"summary": summary,
+			"payload_json": body,
+			"payload_hash": payload_hash(payload or {}),
+			"summary": card,
 			"status": "pending",
 		}
 	)
 	doc.insert()
-	return {"pending_action": doc.name, "summary": summary, "status": "pending"}
+	return {
+		"pending_action": doc.name,
+		"summary": card,
+		"status": "pending",
+		"payload_hash": doc.payload_hash,
+		"target_doctype": target_doctype,
+		"action_type": action_type,
+	}
 
 
 def detect_and_query_leads(message: str, chat_id: str | None = None) -> dict | None:

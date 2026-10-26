@@ -79,6 +79,41 @@
    "options": "ERP AI Persona"
   },
   {
+   "fieldname": "sec_brand",
+   "fieldtype": "Section Break",
+   "label": "Panel Text"
+  },
+  {
+   "fieldname": "panel_title",
+   "fieldtype": "Data",
+   "label": "Panel Title",
+   "default": "ERP Assistant",
+   "description": "Main line in the chat header."
+  },
+  {
+   "fieldname": "panel_subtitle",
+   "fieldtype": "Data",
+   "label": "Panel Subtitle",
+   "default": "مساعد أعمالك"
+  },
+  {
+   "fieldname": "col_brand",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "panel_hint",
+   "fieldtype": "Small Text",
+   "label": "Panel Hint",
+   "default": "يجيب من بيانات العمل المتاحة لك. لا يُنفَّذ أي تعديل قبل موافقتك."
+  },
+  {
+   "fieldname": "panel_hint_en",
+   "fieldtype": "Small Text",
+   "label": "Panel Hint EN",
+   "default": "Answers from the business data you can access. Nothing changes until you approve."
+  },
+  {
    "fieldname": "sec_scope",
    "fieldtype": "Section Break",
    "label": "Work Scope"

@@ -24,6 +24,9 @@ CONTENT_MAX = 900
 
 def load_openai_history(chat_name: str, exclude_last_user: bool = True) -> list[dict]:
 	"""Return prior turns as OpenAI chat messages (user/assistant only)."""
+	# Newest first, then restore chronological order. A rising LIMIT of the oldest
+	# rows would drop every message after the first page.
+	fetch = HISTORY_TURNS + (1 if exclude_last_user else 0)
 	rows = frappe.get_all(
 		"ERP AI Message",
 		filters={
@@ -32,14 +35,12 @@ def load_openai_history(chat_name: str, exclude_last_user: bool = True) -> list[
 			"status": ("in", ("complete", "refused_work", "refused_abuse", "blocked", "error")),
 		},
 		fields=["name", "role", "content", "status", "creation"],
-		order_by="creation asc",
-		limit_page_length=200,
+		order_by="creation desc",
+		limit_page_length=fetch,
 	)
+	rows.reverse()
 	if exclude_last_user and rows and rows[-1].role == "user":
 		rows = rows[:-1]
-
-	# Keep the most recent window
-	rows = rows[-HISTORY_TURNS:]
 	out = []
 	for r in rows:
 		content = (r.content or "").strip()
@@ -132,6 +133,7 @@ def build_messages(
 	history: list[dict],
 	user_message: str,
 	chat_summary: str = "",
+	images: list[dict] | None = None,
 ) -> list[dict]:
 	"""Assemble the OpenAI messages array with memory layers."""
 	msgs: list[dict] = [{"role": "system", "content": system}]
@@ -150,7 +152,18 @@ def build_messages(
 		msgs.append({"role": "system", "content": "LIVE tool results (highest priority facts):\n" + tool_context[:12000]})
 	for h in history:
 		msgs.append({"role": h["role"], "content": h["content"]})
-	msgs.append({"role": "user", "content": user_message})
+	if images:
+		content = [{"type": "text", "text": user_message}]
+		for image in images[:2]:
+			content.append(
+				{
+					"type": "image_url",
+					"image_url": {"url": f"data:{image.get('mime') or 'image/jpeg'};base64,{image.get('b64')}"},
+				}
+			)
+		msgs.append({"role": "user", "content": content})
+	else:
+		msgs.append({"role": "user", "content": user_message})
 	return msgs
 
 

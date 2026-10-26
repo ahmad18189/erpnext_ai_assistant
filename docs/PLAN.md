@@ -1,43 +1,59 @@
 # The ERPNext-AI-Assistant — Plan
 
-Product name: **The ERPNext-AI-Assistant**. Frappe app / Python module: `erpnext_ai_assistant`.  
-Panel title uses the same product name (Arabic subtitle: مساعد ERPNext).
+Frappe app / Python module: `erpnext_ai_assistant`.  
+Module: `ERP AI Assistant`.
 
-The panel is a 448×684 shell (`top: 212px`, `left: 24px`) with header, new chat, close, chat/history tabs, messages, and composer. Cairo, RTL, navy `#0f1b2e`.
+The panel is a 448×684 RTL shell (Cairo, navy `#0f1b2e`) with header, new chat, close, language toggle, chat/history, messages, attach, and composer. Header and hint text come from ERP AI Settings.
 
-## Canonical decisions
+## Decisions
 
-- Permissions and roles always win. Session-user `get_list` / `get_doc` / report / method / write. No `ignore_permissions`. No ERP API-key store.
-- CRUD only with written acknowledgment and approval (Pending Action).
-- Chats are registered (ERP AI Chat + Message). Guest chat is off.
-- Work-only content guard (deterministic). Abuse scan before the work gate. Blocked User on ERP AI Settings is the block source of truth.
-- Editable ERP AI Skill / Persona / Memory DocTypes.
-- `run_chat` order: Guest → Blocked User → register Chat → abuse → work-scope → optional intent → Skill(s) + Memory + Persona → RAG → RDF before name queries → detectors → tools → **AI model last**.
-- Thinking via `frappe.publish_realtime` on `erp_ai_chat:{chat_id}`.
-- Charts are plain SVG/CSS (no Recharts). Panel JS/CSS are owned by this app.
-- Hosts opt in via ERP AI Settings → Overlay Pages.
-- Finance skill documents Sales/Purchase Invoice fields and VAT. Do not invent e-invoice clearance data.
+- The assistant serves every installed app. Routes come from app hooks. It is not hard-wired to one CRM.
+- Permissions win. Reads use the session user. No `ignore_permissions` on business data. No Guest chat.
+- Writes are a contract. Schema first, then a Pending Action whose payload cannot change, then one approval.
+- Missing required fields are asked by label in the user's language. DocType defaults may be used and must be shown. Business values, including phone numbers, are not invented.
+- Abuse runs before the work gate. `contains_abuse` is on every response. Blocked User is the block record.
+- Skills, persona, and memory are DocTypes. RAG honors skill roles. RDF runs before a name query.
+- The model is last. Retrieved text and chat summaries are context, not new authority.
+- Charts are SVG in this app and are labeled when they are a sample.
+- History sent to the model is the newest window.
+- Uploaded tables are reviewed against Frappe import templates. They are not imported by the assistant.
+- Document names are the Title (or Persona Name). No naming series.
+- Secrets are not committed.
 
-## Package layout
+## Package
 
 ```
 erpnext_ai_assistant/
   erpnext_ai_assistant/
     hooks.py
-    public/js|css
+    install.py
     api/chat.py
-    services/...
-    erp_ai_assistant/doctype|workspace|report
-    skills/
-  docs/PLAN.md SRS.md architecture.md
+    public/js|css|images
+    services/
+      run_chat.py
+      schema.py
+      writes.py
+      apps.py
+      imports.py
+      detectors.py
+      conversation.py
+      moderation/
+      rag/
+      rdf/
+      llm/
+      tools/
+    erp_ai_assistant/          DocTypes, workspace, reports
+    skills/seed.py
+    translations/ar.csv
+  docs/PLAN.md  SRS.md  architecture.md  TEST_RESULTS.md
 ```
 
-## Implement order
+## Build order already followed
 
-1. App + docs
-2. Core DocTypes + Workspace
-3. App-owned panel on Overlay Pages
-4. `run_chat` gate skeleton
-5. CRM skill seed + RDF before name query
+1. App, DocTypes, Workspace, panel on Overlay Pages.
+2. `run_chat` gates, skills, RDF, charts.
+3. Schema-backed writes, approval lock, role-filtered RAG.
+4. File upload and import-template review.
+5. Installed-app routes instead of a single host.
 
 See `SRS.md` and `architecture.md`.

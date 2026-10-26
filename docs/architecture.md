@@ -2,54 +2,95 @@
 
 ## Integration model
 
-The assistant is a **product app**. Host apps (CRM, HRMS, Desk) load its public
-JS/CSS when the current path matches **ERP AI Settings → Overlay Pages**.
-Colors, fonts, and panel CSS ship inside `erpnext_ai_assistant` (Cairo/RTL/navy).
-Do **not** put assistant CSS into the theme app.
+The assistant is a Frappe app. It is not part of one CRM or HR product.
 
-## run_chat order (canonical)
+- Desk loads `app_include_js` / `app_include_css`.
+- Any other installed app can show the same panel. `services/apps.py` reads `add_to_apps_screen` and `app_icon_route`. Install seeds those paths into **ERP AI Settings → Overlay Pages**, together with `/desk` and `/app`.
+- A host may also load `public/js/crm_include.js`. That file only injects this app's bundle. It does not contain product logic.
+- Colors, Cairo, and RTL live in this app. Do not copy the panel CSS into a theme app.
 
-1. Reject Guest
-2. If on Blocked User → fixed blocked message, stop
-3. Register / ensure ERP AI Chat
-4. Abuse scan (event + maybe block)
-5. Work-scope gate (no LLM)
-6. Optional provider intent (cannot widen)
-7. Load Skill(s) + Memory + active Persona
-8. `retrieve()` RAG
-9. For name/field questions: always `tool_rdf_lookup` before `tool_erp_query`
-10. Detectors → live tools
-11. **AI model last**
+`bootstrap` returns `overlay_pages`, `app_routes`, and `branding` (title, subtitle, hint, hint_en).
 
-## DocTypes (module: ERP AI Assistant)
+## run_chat order
 
-- ERP AI Chat / Message / Generated Query / Generated Chart
-- ERP AI Knowledge Document / Knowledge Chunk / Metadata Cache
-- ERP AI Pending Action / Abuse Event / Audit Log
-- ERP AI Skill (+ Skill Role) / Persona (+ Persona Role) / Memory
-- ERP AI Settings (Single) + children: Abuse Term, Notify Role, Blocked User, Overlay Page
+1. Reject Guest.
+2. Blocked User → fixed message, stop.
+3. Ensure ERP AI Chat (name = Title) and store the user message.
+4. Abuse scan. Every response includes `contains_abuse` and `abuse`.
+5. Work-scope gate. No model. A route under Desk or any installed app route counts as work. Follow-ups reuse recent user text.
+6. Load memory and the active persona.
+7. When the model is enabled and a key is configured, the model chooses tools (`services/tools/agent.py`). The server runs only the allowlist: describe a DocType, query records, list installed apps, match a field label, search role-filtered knowledge, or propose a write. Each call is one thinking step with its result. At most four rounds. Retrieved text is data, not a new policy.
+8. `propose_write` is the only write. Schema validation runs before a pending action exists. A missing required field or an invalid phone stops the loop and the reply asks for that label. The model does not insert the document.
+9. When the model is off or the key is missing, the regex detectors run instead, then skills and role-filtered RAG, then one completion.
+10. Schema (`services/schema.py`) reads DocType meta: mandatory fields, Select options, child tables. Defaults that are real DocType defaults are applied and listed. `Today` and `__user` are left for Frappe. No pending action is created until a create payload is complete.
 
-## Workspace and reports
+## Writes
 
-**Workspace:** The ERPNext-AI-Assistant
+`propose_write` stores a canonical JSON payload and `payload_hash`. The summary is generated from that payload.
 
-**Reports (System Manager):**
+`ERPAIPendingAction.validate` allows only these status moves:
 
-| Report | Purpose |
+| From | To |
 |---|---|
-| ERP AI Chats by User | chats/messages count per user |
-| ERP AI Abuse Summary | abuse by user/category; blocked users |
-| ERP AI Pending Actions | pending/approved/rejected writes |
-| ERP AI Skill Usage | skills enabled / loaded |
-| ERP AI Memory Overview | memory rows by user/scope |
+| pending | approved, rejected, executed, failed |
+| approved | executed, failed |
+| executed, rejected, failed | none |
 
-## Overlay Pages
+Payload, summary, target, user, and hash stay fixed unless `frappe.flags.erp_ai_mutate_pending` is set by approve/reject. Approval locks the row, checks the hash, checks `allow_pending_writes`, validates the payload again with defaults turned off, then executes once.
 
-Seed examples: `/crm` and `/desk`. Add more paths (HR, stock, accounts) in ERP AI Settings → Overlay Pages.
+Opening a saved record uses `/desk/{doctype-slug}/{name}`. If the DocType's module belongs to an installed app, `crm_route` is that app's own home route from hooks, not a hard-coded path.
 
-## Tool registry (summary)
+## DocTypes
 
-Read: metadata/RAG, erp_query, erp_get_doc, erp_report, get_doctype_meta,
-run_method (allowlist), read_doctype_controller (SM), build_chart, read_skill, rdf_lookup.
+Forms use tabs, sections, and column breaks. Child tables set `in_list_view` and `columns` (grid and list). Naming rule is **By fieldname** (`field:title` or `field:persona_name`). There is no naming series.
 
-Write: create/update/delete → Pending Action only; `approve_action` after ack.
+| Area | DocTypes |
+|---|---|
+| Conversation | ERP AI Chat, ERP AI Message, ERP AI Generated Query, ERP AI Generated Chart |
+| Knowledge | ERP AI Knowledge Document (`source_roles`), ERP AI Knowledge Chunk, ERP AI Metadata Cache |
+| Safety / writes | ERP AI Pending Action (`payload_hash`), ERP AI Abuse Event, ERP AI Audit Log |
+| Config | ERP AI Skill (+ Role), ERP AI Persona (+ Role), ERP AI Memory |
+| Settings | Single: Abuse Term, Notify Role, Blocked User, Overlay Page |
+
+**Workspace:** The ERPNext-AI-Assistant.  
+**Desktop Icon:** same label, logo `public/images/erp-ai-logo.svg`.
+
+**Reports:** Chats by User, Abuse Summary, Pending Actions, Skill Usage, Memory Overview.
+
+## Services
+
+| Module | Role |
+|---|---|
+| `run_chat.py` | Orchestrator. One step record per id, with `detail` / `detail_ar` |
+| `conversation.py` | Newest `HISTORY_TURNS` messages, then chronological order |
+| `detectors.py` | Fallback when the model is off: leads, calls, charts, invoices |
+| `schema.py` | DocType contract and `propose_schema_write` |
+| `writes.py` | Payload hash and summary |
+| `apps.py` | Installed app routes |
+| `imports.py` | Header vs import-template match. No row insert |
+| `moderation/` | Abuse terms and work gate |
+| `rag/` | Keyword retrieve plus role filter |
+| `rdf/` | Label → fieldname, including Arabic name labels |
+| `llm/provider.py` | OpenAI-compatible chat, including tool calls. Images are optional data URLs |
+| `tools/agent.py` | Allowlisted tools the model may call. The server executes them |
+| `tools/registry.py` | Session-user tools and `propose_write` |
+
+## Tools
+
+Read: `tool_rdf_lookup`, `tool_erp_query` (`get_list`), `tool_erp_get_doc`, `tool_erp_report`, `tool_get_doctype_meta`, allowlisted `tool_run_method`, `tool_read_doctype_controller` (System Manager), `tool_list_installed_apps`, `build_chart`, `read_skill`.
+
+Write: `propose_write` only. `approve_action` / `reject_action` after acknowledgment.
+
+## Files and import review
+
+Upload is private, owned by the session user, max 5 MB: png, jpeg, webp, gif, csv, xlsx, txt, pdf.
+
+A table is scored against importable columns (fieldname and label, child tables included). The reply lists the best DocTypes, mapped columns, missing required fields, and unmatched columns. `blank_import_template` returns a header-only CSV. Starting a Data Import stays in Desk.
+
+## Thinking channel
+
+`frappe.publish_realtime` event `erp_ai_thinking`, room `erp_ai_chat:{chat_id}`. The panel replaces a step with the same `id` and renders `detail` under the label. The list stays open.
+
+## Translations
+
+English strings stay in DocType JSON. Arabic is `erpnext_ai_assistant/translations/ar.csv`, loaded by Frappe when the user language is `ar`. Suggestion text calls `get_all_translations(lang)` so field labels follow the chat language.

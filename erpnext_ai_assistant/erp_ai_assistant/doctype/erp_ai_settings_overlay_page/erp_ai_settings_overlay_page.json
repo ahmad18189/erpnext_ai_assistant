@@ -30,7 +30,7 @@
    "fieldname": "host_hint",
    "fieldtype": "Select",
    "label": "Host Hint",
-   "options": "crm_spa\ndesk\ncustom",
+   "options": "app\ndesk\ncustom\ncrm_spa",
    "default": "custom",
    "in_list_view": 1,
    "columns": 2,
