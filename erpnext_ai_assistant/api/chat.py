@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import frappe
 from erpnext_ai_assistant.services import run_chat as orch
@@ -10,10 +11,16 @@ from erpnext_ai_assistant.services.moderation import abuse as abuse_mod
 
 
 @frappe.whitelist()
-def run(message: str, route: str | None = None, chat_id: str | None = None, attachments: str | None = None):
+def run(
+	message: str,
+	route: str | None = None,
+	chat_id: str | None = None,
+	attachments: str | None = None,
+	file_url: str | None = None,
+):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
-	if not (message or "").strip() and not attachments:
+	if not (message or "").strip() and not attachments and not file_url:
 		frappe.throw("Empty message")
 	images = _images_from_attachments(attachments)
 	return orch.run_chat(
@@ -21,6 +28,7 @@ def run(message: str, route: str | None = None, chat_id: str | None = None, atta
 		route=route,
 		chat_id=chat_id,
 		images=images,
+		file_url=file_url or None,
 	)
 
 
@@ -153,6 +161,11 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 
 	dt = doc.target_doctype
 	action = doc.action_type
+	if action == "import":
+		if doc.user != frappe.session.user:
+			frappe.throw("Not your pending action", frappe.PermissionError)
+		return _approve_import(doc, acknowledgment_text)
+
 	perm_map = {
 		"create": "create",
 		"update": "write",
@@ -222,6 +235,63 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 
 
 @frappe.whitelist()
+def _approve_import(doc, acknowledgment_text: str) -> dict:
+	"""Create one Data Import, commit, then start it. The card is already locked."""
+	from erpnext_ai_assistant.services.imports import execute_import, import_status_message
+
+	payload = json.loads(doc.payload_json) if isinstance(doc.payload_json, str) else (doc.payload_json or {})
+	doc.acknowledgment_text = acknowledgment_text.strip()
+	doc.acknowledged = 1
+	doc.resolved_by = frappe.session.user
+	doc.resolved_at = frappe.utils.now_datetime()
+	try:
+		created = execute_import(payload)
+		doc.status = "executed"
+		doc.result_json = json.dumps(created, ensure_ascii=False)
+	except Exception as exc:
+		doc.status = "failed"
+		doc.result_json = json.dumps({"error": str(exc)}, ensure_ascii=False)
+		frappe.flags.erp_ai_mutate_pending = True
+		try:
+			doc.save()
+		finally:
+			frappe.flags.erp_ai_mutate_pending = False
+		frappe.throw(str(exc))
+	frappe.flags.erp_ai_mutate_pending = True
+	try:
+		doc.save()
+	finally:
+		frappe.flags.erp_ai_mutate_pending = False
+	frappe.db.commit()
+	data_import = frappe.get_doc("Data Import", created["data_import"])
+	started = data_import.start_import()
+	lang = "ar" if re.search(r"[\u0600-\u06FF]", doc.summary or "") else "en"
+	report = import_status_message(data_import.name, lang)
+	if started is False and report["status"] == "Pending" and not (data_import.template_warnings or "").strip():
+		note = "الاستيراد في قائمة الانتظار.\n" if lang == "ar" else "The import is already queued.\n"
+		report["message"] = note + report["message"]
+	if doc.chat and report.get("message"):
+		from erpnext_ai_assistant.services.naming import as_title
+
+		frappe.get_doc(
+			{
+				"doctype": "ERP AI Message",
+				"title": as_title("ERP AI Message", report["message"][:80]),
+				"chat": doc.chat,
+				"role": "assistant",
+				"content": report["message"],
+				"status": "complete",
+			}
+		).insert(ignore_permissions=True)
+	return {
+		"status": doc.status,
+		"result": created,
+		"link": {"desk_route": f"/desk/data-import/{data_import.name}", "label": data_import.name},
+		"message": report["message"],
+		"files": report.get("files") or [],
+	}
+
+
 def reject_action(pending_action: str, reason: str | None = None):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
@@ -310,6 +380,7 @@ def bootstrap(route: str | None = None):
 		"provider": "openai",
 		"model": settings.model or "gpt-4o-mini",
 		"has_api_key": bool(settings.api_key or frappe.conf.get("erp_ai_openai_api_key")),
+		"has_erpnext": "erpnext" in set(frappe.get_installed_apps()),
 	}
 
 

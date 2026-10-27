@@ -15,7 +15,13 @@ from erpnext_ai_assistant.services.rag import service as rag
 from erpnext_ai_assistant.services.tools import registry as tools
 
 
-def run_chat(message: str, route: str | None = None, chat_id: str | None = None, images: list | None = None) -> dict:
+def run_chat(
+	message: str,
+	route: str | None = None,
+	chat_id: str | None = None,
+	images: list | None = None,
+	file_url: str | None = None,
+) -> dict:
 	t0 = time.time()
 	user = frappe.session.user
 	if user == "Guest" or not user:
@@ -157,6 +163,9 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None,
 		detail_ar="ضمن نطاق العمل",
 	)
 
+	from erpnext_ai_assistant.services.cheat_sheet import cheat_sheet_text, is_cheat_sheet
+
+	sheet_reply = cheat_sheet_text(lang) if is_cheat_sheet(message) else None
 	memory_bits = _load_memory(settings)
 
 	from erpnext_ai_assistant.services import conversation as conv
@@ -203,10 +212,24 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None,
 	answer_from_tools = None
 	clarify_intent = None
 	gap_signals: list = []
+	download_files: list = []
 	from erpnext_ai_assistant.services.desk_link import desk_link
 	from erpnext_ai_assistant.services.tools.agent import _targeted_turn, continue_guided_create
 
-	nav = desk_link(message, lang) if intent.get("action") != "count" else None
+	if sheet_reply:
+		answer_from_tools = sheet_reply
+	elif _wants_import_status(message):
+		status_reply = _import_status_reply(chat.name, lang)
+		if status_reply:
+			answer_from_tools = status_reply.get("message") or ""
+			download_files = status_reply.get("files") or []
+	elif file_url:
+		prepared = _prepare_import_turn(message, file_url, chat.name, lang)
+		if prepared:
+			answer_from_tools = prepared.get("message") or ""
+			pending = prepared.get("pending")
+			download_files = prepared.get("files") or []
+	nav = None if answer_from_tools is not None or pending else desk_link(message, lang) if intent.get("action") != "count" else None
 	if nav and nav.get("reply"):
 		answer_from_tools = nav["reply"]
 	elif nav and nav.get("ambiguous"):
@@ -214,7 +237,9 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None,
 		if clarified:
 			answer_from_tools = clarified
 			clarify_intent = intent
-	continued = None if choice or nav else continue_guided_create(message, prior_facts, chat.name, lang, step)
+	continued = None
+	if answer_from_tools is None and pending is None and not choice and not nav:
+		continued = continue_guided_create(message, prior_facts, chat.name, lang, step)
 	if continued is not None:
 		answer_from_tools = continued.get("answer") or ""
 		pending = continued.get("pending")
@@ -482,8 +507,75 @@ def run_chat(message: str, route: str | None = None, chat_id: str | None = None,
 		},
 		"next_ask": (pending or {}).get("next_ask") if isinstance(pending, dict) else None,
 		"missing_fields": ((pending or {}).get("next_step") or {}).get("missing") if isinstance(pending, dict) else [],
+		"files": download_files,
 		**_abuse_payload(abuse),
 	}
+
+
+def _wants_import_status(message: str) -> bool:
+	from erpnext_ai_assistant.services.arabic import normalize_arabic
+
+	norm = normalize_arabic(message)
+	raw = (message or "").lower()
+	return any(
+		phrase in norm or phrase in raw
+		for phrase in ("ماذا حدث للاستيراد", "حالة الاستيراد", "what happened to the import", "import status")
+	)
+
+
+def _import_status_reply(chat: str, lang: str) -> dict | None:
+	rows = frappe.get_list(
+		"ERP AI Pending Action",
+		filters={"chat": chat, "user": frappe.session.user, "action_type": "import", "status": "executed"},
+		fields=["result_json"],
+		order_by="modified desc",
+		limit_page_length=1,
+	)
+	if not rows:
+		return None
+	try:
+		result = json.loads(rows[0].result_json or "{}")
+	except Exception:
+		return None
+	name = result.get("data_import")
+	if not name:
+		return None
+	from erpnext_ai_assistant.services.imports import import_status_message
+
+	return import_status_message(name, lang)
+
+
+def _prepare_import_turn(message: str, file_url: str, chat: str, lang: str) -> dict | None:
+	from erpnext_ai_assistant.services.imports import (
+		INSERT_NEW,
+		UPDATE_EXISTING,
+		import_block_reason,
+		match_templates,
+		owned_import_file,
+		propose_import,
+		read_full_table,
+	)
+	from erpnext_ai_assistant.services.targeting import match_doctype
+
+	try:
+		file_doc = owned_import_file(file_url)
+	except Exception:
+		return {"message": "الملف ليس ملفًا خاصًا لك." if lang == "ar" else "That file is not your private file.", "files": [], "pending": None}
+	header, _rows = read_full_table(file_doc.get_content() or b"", file_doc.file_name or "")
+	named = match_doctype(message)
+	matches = match_templates(header)
+	doctype = None
+	if named and not import_block_reason(named):
+		doctype = named
+	elif len(matches) == 1 and not import_block_reason(matches[0]["doctype"]):
+		doctype = matches[0]["doctype"]
+	if not doctype:
+		return None
+	from erpnext_ai_assistant.services.arabic import normalize_arabic
+
+	norm = normalize_arabic(message)
+	import_type = UPDATE_EXISTING if any(word in norm for word in ("تحديث", "تعديل", "update")) else INSERT_NEW
+	return propose_import(chat, file_url, doctype, import_type, lang)
 
 
 def _answer_for_pending(pending: dict | None, lang: str) -> str | None:

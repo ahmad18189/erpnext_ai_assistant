@@ -7,8 +7,8 @@ app_description = "Workplace ERP/CRM assistant panel for Frappe."
 app_email = "devnull@localhost"
 app_license = "MIT"
 
-app_include_js = ["/assets/erpnext_ai_assistant/js/erpnext_ai_assistant.bundle.js?v=ai20"]
-app_include_css = ["/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai20"]
+app_include_js = ["/assets/erpnext_ai_assistant/js/erpnext_ai_assistant.bundle.js?v=ai21"]
+app_include_css = ["/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai21"]
 
 after_migrate = ["erpnext_ai_assistant.install.after_migrate"]
 after_install = ["erpnext_ai_assistant.install.after_install"]

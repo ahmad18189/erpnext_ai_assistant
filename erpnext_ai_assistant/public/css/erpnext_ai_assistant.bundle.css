@@ -481,6 +481,26 @@
   padding: 1rem 0;
 }
 
+.erp-ai-cheat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.4rem 0 0.6rem;
+}
+
+.erp-ai-cheat-line {
+  display: block;
+  width: 100%;
+  text-align: start;
+  background: #fff;
+  border: 1px solid var(--erp-ai-border);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
 .erp-ai-memory {
   display: flex;
   flex-direction: column;

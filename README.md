@@ -1,11 +1,30 @@
 # The ERPNext-AI-Assistant
 
+[![Frappe](https://img.shields.io/badge/Frappe-v16-0089FF)](https://frappeframework.com)
+[![ERPNext](https://img.shields.io/badge/ERPNext-optional-2E7D32)](https://erpnext.com)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org)
+[![Arabic](https://img.shields.io/badge/Arabic-first%20RTL-0F766E)](#what-it-does)
+[![License: MIT](https://img.shields.io/badge/License-MIT-111827)](license.txt)
+
 Workplace assistant for any **Frappe** site. ERPNext, HRMS, CRM, and custom apps are optional.  
 It ships as a Frappe app (`erpnext_ai_assistant`) with an Arabic-first RTL chat panel, session-scoped tools, a translated DocType label index, abuse moderation, and a Pending Action flow for writes.
+
+`#frappe` `#erpnext` `#hrms` `#crm` `#arabic` `#rtl` `#openai` `#data-import` `#desk`
 
 > **Product name:** The ERPNext-AI-Assistant  
 > **Default header:** ERP Assistant / مساعد أعمالك (editable in Settings)  
 > **Module:** `ERP AI Assistant`
+
+## Cards
+
+| | |
+|---|---|
+| **Count and list** | Ask in Arabic or English. The number comes from `count_records`, limited to rows you can read. |
+| **Open Desk** | "افتح أداة الاستيراد" returns a button on this site. The path is never taken from the model. |
+| **Approve writes** | One missing field at a time. Nothing is saved until you check the box and approve. |
+| **Data Import** | Upload a spreadsheet. Headers can be renamed. Import starts only after you approve, then the reply quotes Frappe's status. |
+| **Personas** | Roles first, then the route, then the app the message is about. A blank default is Frappe helper. |
+| **Cheat sheet** | The empty chat lists what the assistant can do. "ماذا تستطيع" returns that same list. |
 
 ---
 
@@ -128,6 +147,7 @@ erpnext_ai_assistant/
     ├── public/js|css/             # panel + CRM include
     ├── services/
     │   ├── run_chat.py            # orchestrator
+    │   ├── cheat_sheet.py         # fixed "what can you do" list
     │   ├── intent.py              # DocType, app, action, confidence
     │   ├── persona.py             # roles, then route, then app
     │   ├── desk_link.py           # same-site /desk/ open button
@@ -233,7 +253,8 @@ The composer accepts images, CSV, XLSX, PDF, and plain text (5 MB). Files are st
 - **Images** are sent to the model as image input so it can read them. They are not written into ERP documents.
 - **CSV / XLSX** are compared with Frappe Data Import templates. A template is the target DocType's importable columns (field names and labels, including child-table columns). The reply ranks the closest DocTypes and lists mapped columns, required fields that are missing, and file columns that do not match a field.
 - **Blank template.** Each suggestion can download a one-row CSV header for that DocType. That is the same column list you would start from in Desk → Data Import → Download Template, without sample records.
-- **No automatic import.** Matching a file does not insert rows. Ask the assistant to open the import tool and it returns a button to `/desk/data-import` when you can read Data Import. Other writes still go through Pending Action and approval.
+- **Guided import.** When the header matches one DocType you may import, the assistant builds a corrected file (header renames only; cell values stay as you wrote them) and a warning-row file. Approve the card to create one Data Import and start it. The reply quotes Success, Partial Success, Error, Timed Out, still running, or blocked. Failed rows can be downloaded. Ask "ماذا حدث للاستيراد" later for the same status.
+- **Open the tool.** "افتح أداة الاستيراد" still returns a button to `/desk/data-import` when you can read Data Import.
 
 ## Security model
 

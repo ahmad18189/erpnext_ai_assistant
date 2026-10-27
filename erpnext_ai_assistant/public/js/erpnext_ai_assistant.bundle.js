@@ -220,7 +220,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai19";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai21";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -402,7 +402,7 @@
       return;
     }
 
-    body.appendChild(el("div", "erp-ai-empty", t("empty")));
+    renderCheatSheet(body);
 
     var composer = el("div", "erp-ai-composer");
     if (state.files.length) {
@@ -456,7 +456,47 @@
     var body = document.getElementById("erp-ai-body");
     if (!body) return;
     body.innerHTML = "";
-    body.appendChild(el("div", "erp-ai-empty", t("empty")));
+    renderCheatSheet(body);
+  }
+
+  function cheatLines() {
+    var erp = state.boot && state.boot.has_erpnext;
+    if (state.lang === "ar") {
+      var ar = [
+        { text: "عدّ أو اعرض السجلات التي تستطيع قراءتها.", example: "كم عدد المهام" },
+        { text: "افتح شاشة في هذا المكتب.", example: "افتح أداة الاستيراد" },
+        { text: "أنشئ أو عدّل سجلًا حقلًا واحدًا. لا يُحفظ شيء قبل موافقتك.", example: "اعمل مهمة اجتماع غدا" },
+        { text: "راجع جدولًا ثم استورده فقط بعد موافقتك.", example: "راجع ملف الاستيراد" },
+      ];
+      if (erp) ar.push({ text: "اسأل عن خطوات العمل في دليل ERPNext.", example: "كيف أنشئ مهمة" });
+      ar.push({ text: "احفظ حقيقة عنك فقط بعد تفعيل التأكيد.", example: "" });
+      return ar;
+    }
+    var en = [
+      { text: "Count or list records you can read.", example: "how many todos" },
+      { text: "Open a screen on this Desk.", example: "open the import tool" },
+      { text: "Create or update one field at a time. Nothing is saved until you approve.", example: "create a todo" },
+      { text: "Review a spreadsheet, then import it only after you approve.", example: "review the import file" },
+    ];
+    if (erp) en.push({ text: "Ask how to do something in the ERPNext manual.", example: "how do I create a todo" });
+    en.push({ text: "Save a fact about you only after you check the confirm box.", example: "" });
+    return en;
+  }
+
+  function renderCheatSheet(body) {
+    var box = el("div", "erp-ai-cheat");
+    cheatLines().forEach(function (line) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "erp-ai-cheat-line";
+      button.textContent = line.text;
+      button.addEventListener("click", function () {
+        var input = document.getElementById("erp-ai-input");
+        if (input && line.example) input.value = line.example;
+      });
+      box.appendChild(button);
+    });
+    body.appendChild(box);
   }
 
   function renderMemoryForm(body) {
@@ -760,10 +800,22 @@
         wrap.appendChild(renderChart(c));
       });
     }
+    if (extra && extra.files) appendFileButtons(wrap, extra.files);
     if (extra && extra.ack) wrap.appendChild(renderAck(extra.ack));
     body.appendChild(wrap);
     body.scrollTop = body.scrollHeight;
     return wrap;
+  }
+
+  function appendFileButtons(parent, files) {
+    (files || []).forEach(function (file) {
+      if (!file || !file.url || String(file.url).indexOf("/private/files/") !== 0) return;
+      var link = document.createElement("a");
+      link.className = "erp-ai-open-link";
+      link.href = file.url;
+      link.textContent = file.label || file.url;
+      parent.appendChild(link);
+    });
   }
 
   function thinkingBlock(steps, ms) {
@@ -1180,6 +1232,7 @@
       }).then(function (res) {
         appendMsg("assistant", (res && res.message) || t("created"), {
           link: res && res.link,
+          files: (res && res.files) || [],
         });
       });
     });
@@ -1264,9 +1317,11 @@
         var notes = [];
         var images = [];
         var reviews = [];
+        var tableUrl = "";
         (uploaded || []).forEach(function (item) {
           if (!item) return;
           if (item.kind === "image") images.push(item);
+          if (item.kind === "table" && item.file_url) tableUrl = item.file_url;
           if (item.review_text) notes.push(item.review_text);
           if (item.excerpt) notes.push(item.excerpt);
           if (item.review) reviews.push(item.review);
@@ -1277,6 +1332,7 @@
           route: location.pathname,
           chat_id: state.chatId || "",
           attachments: JSON.stringify(images),
+          file_url: tableUrl,
         }).then(function (res) {
           res._reviews = reviews;
           return res;
@@ -1295,6 +1351,7 @@
           plain: !!res.next_ask,
           thinking: thinkingBlock(state.steps, state.thinkingMs),
           charts: res.charts || [],
+          files: res.files || [],
           ack: res.pending_action
             ? {
                 pending_action: res.pending_action,
