@@ -137,9 +137,11 @@ A new site gets a working starting point: settings, the Frappe helper, and the c
 
 3. Or the environment variables `OPENAI_API_KEY` or `ERP_AI_API_KEY`
 
-Keep the key on the server. It does not belong in this repository.
+Keep the key on the server. It does not belong in this repository. Install never writes the key, and it never overwrites a value you already saved, including a daily call cap of 0.
 
-The panel opens on Desk and on each installed app. Add or hide a path under ERP AI Settings → Overlay Pages.
+Optional Settings fields: `provider_base_url` (default OpenAI), `model` (default `gpt-4o-mini`), temperature, max tokens, panel title and hints, Overlay Pages, and abuse thresholds.
+
+The panel opens on `/desk`, `/app`, and each installed app route from `add_to_apps_screen` or `app_icon_route`. Add or hide a path under ERP AI Settings → Overlay Pages.
 
 ### A spreadsheet in the chat
 
@@ -149,16 +151,207 @@ You can attach a picture, CSV, Excel file, PDF, or text file up to 5 MB. The fil
 - A CSV or Excel file is matched to a Data Import layout. You see which columns fit, which required fields are missing, and a blank header you can download.
 - When the file matches one list you are allowed to import, Approve creates the import and starts it. The reply then tells you whether it succeeded, partly succeeded, failed, timed out, or is still running. Failed rows can be downloaded.
 
-## For developers
+## What it does
 
-The chat, the tools, and the DocTypes are described in [`docs/architecture.md`](docs/architecture.md). Every read and every save runs as the person who is logged in.
-
-| Doc | What it covers |
+| Capability | Behavior |
 |---|---|
-| [`docs/PLAN.md`](docs/PLAN.md) | Product decisions |
-| [`docs/SRS.md`](docs/SRS.md) | What the app is required to do |
-| [`docs/architecture.md`](docs/architecture.md) | How a message travels through the app |
-| [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) | Test notes |
+| Chat panel | FAB and overlay on Desk and on every installed app route. Header shows the resolved persona |
+| Live reads | Session-user `get_list` / `count_records` / `get_doc` — **no** `ignore_permissions` |
+| Arabic labels | Translated DocType and field index. A field name is used only when exactly one readable field matches |
+| Desk links | "Open the import tool" returns a same-site `/desk/...` button. The model cannot supply the path |
+| Writes | Schema check, then one missing field at a time, then **ERP AI Pending Action**. Nothing is saved until you approve |
+| Personas | Roles first, then route, then the app implied by the message. A blank active persona is Frappe helper |
+| Memory | Confirmed user facts only, plus rolling chat facts so a follow-up keeps the chosen DocType |
+| Charts | Server-built SVG charts (no heavy chart libraries in the panel) |
+| Moderation | Abuse term scan → event → threshold block; work-only gate before the model |
+| Gaps | Unfinished turns are stored on **ERP AI Enhancement** for a later release. The model does not implement them |
+| LLM | OpenAI-compatible chat. The model chooses an allowlisted tool; the server checks permission and schema |
+
+Permissions and Frappe roles always win. Guests cannot chat.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Any installed app + Desk                                  │
+│  App routes from hooks → Overlay Pages → panel JS/CSS      │
+│  FAB + panel (Cairo / RTL / navy)                           │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ frappe.call run / approve_action
+┌───────────────────────────▼─────────────────────────────────┐
+│  api/chat.py  →  services/run_chat.py                       │
+│                                                             │
+│  1. Guest reject                                            │
+│  2. Enabled gate        (Settings can turn the chat off)    │
+│  3. Blocked User check                                      │
+│  4. Ensure ERP AI Chat + Message                            │
+│  5. Abuse scan          → contains_abuse on every response  │
+│  6. Work-scope gate     (deterministic, no LLM)             │
+│  7. Fixed "what can you do" list, before any model call     │
+│  8. Memory + persona (roles, route, inferred app)          │
+│  9. Desk link, chart, or count / list / create when the    │
+│     match is clear. Otherwise the tool loop                │
+│ 10. Detectors only when the model is off                    │
+│ 11. Save the reply. Record an Enhancement row if the       │
+│     turn could not be finished                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Integration model
+
+- This app **owns** panel JS/CSS (`public/js`, `public/css`).
+- Any installed app can host the panel. Routes come from that app's `add_to_apps_screen` hook, plus Desk. Add more paths under ERP AI Settings → Overlay Pages.
+- Desk loads assets through `app_include_js` / `app_include_css`.
+- A host page may load the thin `crm_include.js` shim. The shim only inserts this app's bundle.
+
+Do **not** put assistant CSS into a theme app.
+
+### DocTypes (module: ERP AI Assistant)
+
+| Area | DocTypes |
+|---|---|
+| Conversation | ERP AI Chat, ERP AI Message, ERP AI Generated Query, ERP AI Generated Chart |
+| Knowledge | ERP AI Knowledge Document, ERP AI Knowledge Chunk, ERP AI Metadata Cache |
+| Safety / writes | ERP AI Pending Action, ERP AI Abuse Event, ERP AI Audit Log, ERP AI Enhancement |
+| Config | ERP AI Skill (+ Role), ERP AI Persona (+ Role), ERP AI Memory |
+| Settings (Single) | Abuse Term, Notify Role, Blocked User, Overlay Page children |
+
+**Workspace:** `The ERPNext-AI-Assistant` (System Manager).
+
+**Reports:** ERP AI Chats by User · Abuse Summary · Pending Actions · Skill Usage · Memory Overview · Enhancements by Gap.
+
+System Manager only can read Enhancement rows. A normal chat user cannot.
+
+## Tool registry
+
+All tools run as the **logged-in session user**. The model may call only `describe_doctype`, `query_records`, `count_records`, `list_doctypes`, `list_installed_apps`, `lookup_field`, `search_knowledge`, `search_manual` (when ERPNext is installed), and `propose_write`. The server checks permission and schema before any of those run. Knowledge search is keyword search with a role check. There is no embedding index.
+
+### Read
+
+| Tool | Purpose |
+|---|---|
+| `tool_rdf_lookup` | Metadata / name graph lookup (preferred before free-form name queries) |
+| `tool_erp_query` | Permission-aware `frappe.get_list` |
+| `tool_erp_get_doc` | Permission-aware `get_doc` |
+| `tool_erp_report` | Query Report runner |
+| `tool_get_doctype_meta` | Field labels / types for a DocType |
+| `tool_run_method` | Allowlisted whitelisted methods only |
+| `tool_read_doctype_controller` | Controller source (System Manager only) |
+| `tool_list_installed_apps` | Describe installed apps on the site |
+| `build_chart` | Aggregate + SVG chart payload |
+| `read_skill` | Role- and route-filtered ERP AI Skill rows |
+
+### Write
+
+| Tool | Purpose |
+|---|---|
+| `propose_write` | Creates **ERP AI Pending Action** only |
+| `approve_action` / `reject_action` | API: execute or cancel after written acknowledgment |
+
+## Package layout
+
+```
+erpnext_ai_assistant/
+├── README.md
+├── pyproject.toml
+├── docs/
+│   ├── PLAN.md
+│   ├── SRS.md
+│   ├── architecture.md
+│   └── TEST_RESULTS.md
+└── erpnext_ai_assistant/
+    ├── hooks.py
+    ├── install.py                 # seeds settings, persona, skills, overlays
+    ├── api/chat.py                # whitelisted run / approve / reject / boot
+    ├── public/js|css/             # panel + CRM include
+    ├── services/
+    │   ├── run_chat.py            # orchestrator
+    │   ├── cheat_sheet.py         # fixed "what can you do" list
+    │   ├── intent.py              # DocType, app, action, confidence
+    │   ├── persona.py             # roles, then route, then app
+    │   ├── desk_link.py           # same-site /desk/ open button
+    │   ├── enhancement.py         # unfinished-turn backlog
+    │   ├── schema.py              # DocType contract for writes
+    │   ├── writes.py              # payload hash + summary
+    │   ├── apps.py                # installed app routes
+    │   ├── imports.py             # import-template match
+    │   ├── conversation.py        # newest history window
+    │   ├── detectors.py           # fallback when the model is off
+    │   ├── moderation/            # abuse + work_gate
+    │   ├── llm/provider.py        # OpenAI-compatible client
+    │   ├── rag/                   # retrieve, role-filtered
+    │   ├── rdf/                   # label → fieldname
+    │   ├── charts/                # SVG builders
+    │   └── tools/
+    │       ├── agent.py           # model-directed tool loop
+    │       └── registry.py        # session-user tools
+    ├── skills/                    # seed skill content
+    └── erp_ai_assistant/          # DocTypes, Workspace, Reports
+```
+
+## API surface (session user)
+
+| Method | Role |
+|---|---|
+| `erpnext_ai_assistant.api.chat.run` | Send a message; returns answer + `contains_abuse` + charts/pending |
+| `erpnext_ai_assistant.api.chat.upload_attachment` | Private upload of an image, CSV, XLSX, PDF, or text file |
+| `erpnext_ai_assistant.api.chat.blank_import_template` | CSV header row for one DocType, same columns as a Frappe blank import |
+| `erpnext_ai_assistant.api.chat.approve_action` | Execute pending write after ack |
+| `erpnext_ai_assistant.api.chat.reject_action` | Cancel pending write |
+| `erpnext_ai_assistant.api.chat.bootstrap` | Panel boot (persona, branding, overlays, blocked flag) |
+
+Every `run` response includes:
+
+```json
+{
+  "status": "complete | refused_abuse | refused_work | blocked | …",
+  "contains_abuse": false,
+  "abuse": {
+    "hit": false,
+    "category": null,
+    "score": 0,
+    "matched": [],
+    "event_name": null,
+    "blocked_now": false
+  },
+  "message": "…",
+  "chat_id": "…",
+  "charts": [],
+  "pending_action": null
+}
+```
+
+Realtime thinking steps publish on `erp_ai_thinking` / room `erp_ai_chat:{chat_id}`.
+
+## Files and Data Import review
+
+The composer accepts images, CSV, XLSX, PDF, and plain text (5 MB). Files are stored as private Frappe Files owned by the signed-in user.
+
+- **Images** are sent to the model as image input so it can read them. They are not written into ERP documents.
+- **CSV / XLSX** are compared with Frappe Data Import templates. A template is the target DocType's importable columns (field names and labels, including child-table columns). The reply ranks the closest DocTypes and lists mapped columns, required fields that are missing, and file columns that do not match a field.
+- **Blank template.** Each suggestion can download a one-row CSV header for that DocType. That is the same column list you would start from in Desk → Data Import → Download Template, without sample records.
+- **Guided import.** When the header matches one DocType you may import, the assistant builds a corrected file (header renames only; cell values stay as you wrote them) and a warning-row file. Approve the card to create one Data Import and start it. The reply quotes Success, Partial Success, Error, Timed Out, still running, or blocked. Failed rows can be downloaded. Ask "ماذا حدث للاستيراد" later for the same status.
+- **Open the tool.** "افتح أداة الاستيراد" still returns a button to `/desk/data-import` when you can read Data Import.
+
+## Security model
+
+- **No Guest** chat.
+- ERP reads/writes use the **session user** only.
+- Abuse list is seeded + always unioned at scan time; hits create **ERP AI Abuse Event**.
+- Threshold on Settings can append **Blocked User** and notify manager roles.
+- Writes require a checkbox and acknowledgment text. The payload is hashed and cannot be edited before `approve_action`. Approval runs once.
+- Uploaded files are private to the signed-in user. A spreadsheet match does not insert rows.
+- API keys must live in Password / `site_config` / env — **never** in this repository.
+- Enhancement excerpts are System Manager only and are not copied into the knowledge index.
+
+## Development docs
+
+| Doc | Contents |
+|---|---|
+| [`docs/PLAN.md`](docs/PLAN.md) | Product decisions and scope |
+| [`docs/SRS.md`](docs/SRS.md) | Functional requirements |
+| [`docs/architecture.md`](docs/architecture.md) | Pipeline, DocTypes, tools |
+| [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) | Pipeline test IDs |
 
 ```bash
 bench --site your.site run-tests --app erpnext_ai_assistant
