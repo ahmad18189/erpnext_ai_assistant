@@ -558,3 +558,155 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 		frappe.cache().set_value(key, int(getattr(settings, "max_calls_per_user_day", None) or 100))
 		with self.assertRaises(llm.CallLimitExceeded):
 			llm._consume_call_quota(settings, "en")
+
+	def test_fresh_install_baseline(self):
+		from erpnext_ai_assistant.install import (
+			GENERIC_PERSONA,
+			_ensure_settings,
+			_roles_that_exist,
+			_seed_framework_personas,
+			_seed_persona,
+			_seed_settings_children,
+			_seed_skills,
+			seed_plan,
+		)
+		from erpnext_ai_assistant.services.llm import provider as llm
+
+		frappe_only = seed_plan(installed={"frappe"}, doctypes=set())
+		self.assertEqual(frappe_only["skills"], ["Frappe core", "Site installed apps"])
+		self.assertEqual(frappe_only["personas"], ["Frappe helper", "Workplace Assistant"])
+		with_erp = seed_plan(installed={"frappe", "erpnext"}, doctypes=set())
+		self.assertIn("ERPNext manual how-to", with_erp["skills"])
+		self.assertIn("Stock", with_erp["skills"])
+		self.assertIn("Finance / invoices", with_erp["skills"])
+		self.assertIn("ERPNext helper", with_erp["personas"])
+		self.assertNotIn("CRM leads & deals", with_erp["skills"])
+		self.assertNotIn("HR / payroll", with_erp["skills"])
+		with_crm = seed_plan(installed={"frappe"}, doctypes={"CRM Lead"})
+		self.assertIn("CRM leads & deals", with_crm["skills"])
+		self.assertNotIn("CRM helper", with_crm["personas"])
+		with_hrms = seed_plan(installed={"frappe", "hrms"}, doctypes=set())
+		self.assertIn("HR / payroll", with_hrms["skills"])
+		self.assertEqual(_roles_that_exist([{"role": "Role That Is Not Real XYZ"}]), [])
+		self.assertEqual(_roles_that_exist([{"role": "System Manager"}]), [{"role": "System Manager"}])
+
+		class Blank:
+			max_calls_per_user_day = None
+			turn_deadline_seconds = ""
+
+		class Zero:
+			max_calls_per_user_day = 0
+			turn_deadline_seconds = 0
+
+		self.assertEqual(llm._stored_int(Blank(), "max_calls_per_user_day", 100), 100)
+		self.assertEqual(llm._stored_int(Zero(), "max_calls_per_user_day", 100), 0)
+		self.assertEqual(llm._stored_int(Zero(), "turn_deadline_seconds", 90), 0)
+
+		settings = frappe.get_single("ERP AI Settings")
+		helper = frappe.db.get_value("ERP AI Persona", {"persona_name": GENERIC_PERSONA}, "name")
+		self.assertTrue(helper)
+		settings.panel_title = "MARKER-TITLE"
+		settings.max_calls_per_user_day = 0
+		settings.turn_deadline_seconds = 0
+		settings.active_persona = helper
+		settings.save(ignore_permissions=True)
+		frappe.db.set_value("ERP AI Persona", helper, "tone_instructions", "MARKER-TONE", update_modified=False)
+		_ensure_settings()
+		_seed_persona()
+		_seed_framework_personas()
+		_seed_skills()
+		_seed_settings_children()
+		settings.reload()
+		self.assertEqual(settings.panel_title, "MARKER-TITLE")
+		self.assertEqual(settings.max_calls_per_user_day, 0)
+		self.assertEqual(settings.turn_deadline_seconds, 0)
+		self.assertEqual(settings.active_persona, helper)
+		self.assertEqual(frappe.db.get_value("ERP AI Persona", helper, "tone_instructions"), "MARKER-TONE")
+		settings.active_persona = ""
+		settings.save(ignore_permissions=True)
+		_seed_settings_children()
+		settings.reload()
+		self.assertEqual(settings.active_persona, helper)
+
+	def test_desk_link_import_tool(self):
+		from erpnext_ai_assistant.services.desk_link import desk_link
+
+		if not frappe.db.exists("DocType", "Data Import"):
+			self.skipTest("Data Import is not installed")
+		if not frappe.has_permission("Data Import", "read"):
+			self.skipTest("No read permission on Data Import")
+		opened = desk_link("افتح أداة الاستيراد", "ar")
+		self.assertIn("[[open:/desk/data-import|", opened["reply"])
+		self.assertNotIn("http", opened["reply"])
+		self.assertIsNone(desk_link("https://example.com/import", "en"))
+
+	def test_enhancement_gap_kinds(self):
+		from erpnext_ai_assistant.services.enhancement import classify_gap, record_gap
+		from erpnext_ai_assistant.services.tools.agent import NOT_VERIFIED_AR
+
+		self.assertEqual(
+			classify_gap(NOT_VERIFIED_AR, None, [], clarified=False, intent={})["kind"],
+			"not_verified",
+		)
+		self.assertIsNone(
+			classify_gap("هل تقصد:\n1. عميل", None, [], clarified=True, intent={})
+		)
+		self.assertIsNone(
+			classify_gap(
+				"لا صلاحية لقراءة الحقل.",
+				None,
+				[{"kind": "tool_error", "action": "count_records", "surfaced": True}],
+				clarified=False,
+				intent={},
+			)
+		)
+		self.assertEqual(
+			classify_gap(
+				"",
+				None,
+				[{"kind": "unknown_capability", "action": "missing_tool"}],
+				clarified=False,
+				intent={},
+			)["kind"],
+			"unknown_capability",
+		)
+		self.assertIsNone(
+			classify_gap(
+				"send the field",
+				{"status": "need_input"},
+				[{"kind": "tool_error", "surfaced": True}],
+				clarified=False,
+				intent={},
+			)
+		)
+		if not frappe.db.exists("DocType", "ERP AI Enhancement"):
+			self.skipTest("ERP AI Enhancement is not migrated")
+		chat = frappe.get_doc(
+			{
+				"doctype": "ERP AI Chat",
+				"title": "gap",
+				"user": frappe.session.user,
+				"route": "/desk",
+				"status": "Open",
+				"language": "ar",
+			}
+		).insert()
+		payload = dict(
+			answer=NOT_VERIFIED_AR,
+			pending=None,
+			signals=[],
+			message="كم عدد السجلات",
+			chat=chat.name,
+			route="/desk",
+			persona="",
+			intent={"action": "count", "confidence": "low", "candidates": []},
+			clarified=False,
+		)
+		record_gap(**payload)
+		record_gap(**payload)
+		rows = frappe.db.get_all("ERP AI Enhancement", filters={"chat": chat.name}, fields=["kind", "status", "gap_key"])
+		self.assertEqual(len(rows), 1)
+		self.assertEqual(rows[0].kind, "not_verified")
+		self.assertEqual(rows[0].status, "Open")
+		roles = {row.role for row in frappe.get_meta("ERP AI Enhancement").permissions}
+		self.assertEqual(roles, {"System Manager"})

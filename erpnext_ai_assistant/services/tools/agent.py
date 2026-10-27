@@ -9,7 +9,7 @@ import json
 
 import frappe
 from erpnext_ai_assistant.services.llm import provider as llm
-from erpnext_ai_assistant.services.schema import describe_doctype, missing_message, prepare_payload
+from erpnext_ai_assistant.services.schema import describe_doctype, guided_message, prepare_payload
 from erpnext_ai_assistant.services.tools import registry as tools
 
 MAX_ROUNDS = 4
@@ -188,8 +188,9 @@ def _propose(args: dict, chat_id: str | None, lang: str) -> dict:
 	target = args.get("target_name") or None
 	prepared = prepare_payload(doctype, values, "create" if action == "create" else "update")
 	if prepared["errors"] or (action == "create" and prepared["missing"]):
-		message_en = missing_message(doctype, prepared, "en") if prepared["missing"] else ""
-		message_ar = missing_message(doctype, prepared, "ar") if prepared["missing"] else ""
+		message_en, step_en = guided_message(doctype, prepared, "en") if prepared["missing"] else ("", {})
+		message_ar, step_ar = guided_message(doctype, prepared, "ar") if prepared["missing"] else ("", {})
+		step = step_ar if lang == "ar" else step_en
 		if prepared["errors"]:
 			extra = "\n".join(prepared["errors"])
 			message_en = (message_en + "\n" + extra).strip() if message_en else extra
@@ -200,6 +201,8 @@ def _propose(args: dict, chat_id: str | None, lang: str) -> dict:
 			"action_type": action,
 			"message_en": message_en,
 			"message_ar": message_ar,
+			"next_ask": (step or {}).get("next_ask"),
+			"next_step": step or {},
 		}
 	values = prepared["payload"]
 	if action == "create":
@@ -232,7 +235,7 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 			filters = _parse_filters(args.get("filters"))
 			filters = _resolve_filter_keys(args.get("doctype") or "", filters, lang)
 			if filters.get("_error"):
-				return {"error": filters["_error"]}
+				return {"error": filters["_error"], "candidates": filters.get("_candidates") or []}
 			rows = tools.tool_erp_query(
 				args.get("doctype") or "",
 				filters=filters if isinstance(filters, dict) else {},
@@ -252,7 +255,7 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 			filters = _parse_filters(args.get("filters"))
 			filters = _resolve_filter_keys(args.get("doctype") or "", filters, lang)
 			if filters.get("_error"):
-				return {"error": filters["_error"]}
+				return {"error": filters["_error"], "candidates": filters.get("_candidates") or []}
 			return tools.tool_erp_count(
 				args.get("doctype") or "",
 				filters=filters if isinstance(filters, dict) else {},
@@ -264,7 +267,10 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 		if name == "list_installed_apps":
 			return {"apps": tools.tool_list_installed_apps(args.get("query"))}
 		if name == "lookup_field":
-			return {"hits": tools.tool_rdf_lookup(args.get("query") or "", doctype=args.get("doctype"))[:12]}
+			hits = tools.tool_rdf_lookup(args.get("query") or "", doctype=args.get("doctype"))[:12]
+			if len(hits) == 1:
+				return {"fieldname": hits[0].get("fieldname"), "doctype": hits[0].get("doctype"), "hits": hits}
+			return {"candidates": hits, "hits": hits}
 		if name == "search_knowledge":
 			from erpnext_ai_assistant.services.rag import service as rag
 
@@ -281,6 +287,8 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 				]
 			}
 		if name == "search_manual":
+			if not _erpnext_installed():
+				return {"error": "The ERPNext manual is not available on this site.", "passages": []}
 			from erpnext_ai_assistant.services.manual_docs import search_manual
 
 			return {"passages": search_manual(args.get("query") or "", limit=3)}
@@ -326,23 +334,48 @@ def _resolve_filter_keys(doctype: str, filters: dict, lang: str) -> dict:
 			continue
 		hits = tools.tool_rdf_lookup(str(key), doctype=doctype)
 		readable = [h for h in hits if h.get("fieldname") in permitted or not permitted]
+		candidates = [
+			{"fieldname": hit.get("fieldname"), "label": hit.get("label"), "doctype": hit.get("doctype")}
+			for hit in (readable or hits)[:8]
+			if hit.get("fieldname")
+		]
 		if len(readable) == 1:
 			resolved[readable[0]["fieldname"]] = value
 			continue
+		if len(readable) > 1:
+			msg = (
+				f"«{key}» يطابق أكثر من حقل. اختر واحداً من القائمة."
+				if lang == "ar"
+				else f"«{key}» matches more than one field. Choose one from the list."
+			)
+			return {"_error": msg, "_candidates": candidates}
 		if hits and not readable:
 			msg = (
 				f"الحقل «{key}» فوق مستوى صلاحيتك."
 				if lang == "ar"
 				else f"Field «{key}» is above your permission level."
 			)
-			return {"_error": msg}
+			return {"_error": msg, "_candidates": []}
 		msg = (
 			f"لم أجد حقلاً باسم «{key}». أعطِ تسمية الحقل الصحيحة."
 			if lang == "ar"
 			else f"No field matched «{key}». Provide the correct field label."
 		)
-		return {"_error": msg}
+		return {"_error": msg, "_candidates": []}
 	return resolved
+
+
+def _erpnext_installed() -> bool:
+	try:
+		return "erpnext" in set(frappe.get_installed_apps())
+	except Exception:
+		return False
+
+
+def active_tool_specs() -> list[dict]:
+	if _erpnext_installed():
+		return TOOL_SPECS
+	return [spec for spec in TOOL_SPECS if (spec.get("function") or {}).get("name") != "search_manual"]
 
 
 def _detail(name: str, result: dict, lang: str) -> str:
@@ -375,20 +408,23 @@ def _detail(name: str, result: dict, lang: str) -> str:
 	return json.dumps(result, ensure_ascii=False, default=str)[:180]
 
 
-def _targeted_turn(user: str, chat_id: str | None, lang: str, step) -> dict | None:
+def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dict | None = None) -> dict | None:
 	"""Create, count, or list the DocType the Arabic (or everyday) wording actually names."""
+	from erpnext_ai_assistant.services.schema import extract_field_values
 	from erpnext_ai_assistant.services.targeting import format_count, format_query, interpret, list_fields
 
-	planned = interpret(user)
+	planned = planned or interpret(user)
 	if not planned:
 		return None
 	doctype = planned["doctype"]
 	if planned["action"] == "create":
+		values = dict(planned.get("values") or {})
+		values.update(extract_field_values(doctype, user) or {})
 		step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"create {doctype}", detail_ar=f"إنشاء {doctype}")
 		step("tool-1", "تجهيز طلب", "Prepare request", "propose_write", "running")
 		result = dispatch(
 			"propose_write",
-			{"doctype": doctype, "action": "create", "values": planned.get("values") or {}},
+			{"doctype": doctype, "action": "create", "values": values},
 			chat_id,
 			lang,
 			user_text=user,
@@ -409,10 +445,15 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step) -> dict | No
 		detail = _detail("count_records", result, lang)
 		step("tool-1", "عدد السجلات", "Count records", "count_records", "done", detail=detail, detail_ar=detail)
 		if result.get("error"):
-			return {"answer": str(result["error"]), "pending": None}
+			return {
+				"answer": str(result["error"]),
+				"pending": None,
+				"signals": _error_signal("count_records", doctype, result),
+			}
 		return {
 			"answer": format_count(doctype, int(result.get("total") or 0), lang),
 			"pending": None,
+			"signals": [{"kind": "had_data", "action": "count_records", "doctype": doctype}],
 		}
 	step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"query {doctype}", detail_ar=f"استعلام {doctype}")
 	step("tool-1", "استعلام السجلات", "Query records", "query_records", "running")
@@ -426,11 +467,128 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step) -> dict | No
 	detail = _detail("query_records", result, lang)
 	step("tool-1", "استعلام السجلات", "Query records", "query_records", "done", detail=detail, detail_ar=detail)
 	if result.get("error"):
-		return {"answer": str(result["error"]), "pending": None}
+		return {
+			"answer": str(result["error"]),
+			"pending": None,
+			"signals": _error_signal("query_records", doctype, result),
+		}
 	return {
 		"answer": format_query(doctype, result.get("rows") or [], lang, capped=bool(result.get("capped"))),
 		"pending": None,
+		"signals": [{"kind": "had_data", "action": "query_records", "doctype": doctype}],
 	}
+
+
+def _permission_error(text: str) -> bool:
+	raw = text or ""
+	lower = raw.lower()
+	phrases = (
+		"لا صلاحية",
+		"فوق مستوى صلاحيتك",
+		"لا تملك صلاحية",
+		"no permission",
+		"no read permission",
+		"no access",
+		"not available for assistant writes",
+		"within_permissions",
+		"no_create_permission",
+	)
+	return any(phrase in raw or phrase in lower for phrase in phrases)
+
+
+def _error_signal(name: str, doctype: str, result: dict) -> list:
+	if result.get("candidates") or _permission_error(str(result.get("error") or "")):
+		return []
+	return [{"kind": "tool_error", "action": name, "doctype": doctype, "surfaced": True}]
+
+
+def _note_signal(signals: list, name: str, args: dict, result: dict) -> None:
+	err = str(result.get("error") or "")
+	if err.startswith("Unknown tool "):
+		signals.append({"kind": "unknown_capability", "action": name, "doctype": "", "app": ""})
+		return
+	if name == "search_manual" and not err and not (result.get("passages") or []):
+		query = str(args.get("query") or "").strip()
+		if len(query) >= 2:
+			signals.append(
+				{
+					"kind": "manual_miss",
+					"action": "search_manual",
+					"topic": query[:40],
+					"doctype": "",
+					"app": "",
+				}
+			)
+		return
+	if not err and name in ("query_records", "count_records", "search_knowledge", "search_manual"):
+		if name == "search_manual" or name == "search_knowledge":
+			if result.get("passages"):
+				signals.append({"kind": "had_data", "action": name, "doctype": args.get("doctype") or ""})
+		else:
+			signals.append({"kind": "had_data", "action": name, "doctype": args.get("doctype") or ""})
+		return
+	if name == "propose_write" and result.get("status") == "failed" and not _permission_error(err):
+		signals.append(
+			{
+				"kind": "tool_error",
+				"action": "propose_write",
+				"doctype": result.get("target_doctype") or args.get("doctype") or "",
+				"surfaced": True,
+			}
+		)
+
+
+def continue_guided_create(
+	user: str,
+	prior_facts: dict | None,
+	chat_id: str | None,
+	lang: str,
+	step,
+) -> dict | None:
+	"""Merge a follow-up value into the create that is already in progress."""
+	facts = prior_facts or {}
+	intent = str(facts.get("pending_intent") or "")
+	if not intent.startswith("create:"):
+		return None
+	from erpnext_ai_assistant.services.schema import extract_field_values
+	from erpnext_ai_assistant.services.targeting import _action, _is_howto, match_doctype
+
+	if _is_howto(user) or _action(user) in ("count", "query"):
+		return None
+	doctype = intent.split(":", 1)[1].strip()
+	named = match_doctype(user)
+	# A bare answer to the missing field can contain a DocType word ("اجتماع غدا").
+	# Switch DocTypes only when the user also names an action.
+	if named and named != doctype and _action(user):
+		return None
+	if not doctype or not frappe.db.exists("DocType", doctype):
+		return None
+	collected = facts.get("collected") or {}
+	if not isinstance(collected, dict):
+		collected = {}
+	extracted = extract_field_values(doctype, user) or {}
+	merged = dict(collected)
+	for key, value in extracted.items():
+		if value not in (None, ""):
+			merged[key] = value
+	nxt = facts.get("next_field")
+	if nxt and not extracted:
+		bare = (user or "").strip()
+		if bare and len(bare) <= 180 and "\n" not in bare and not _action(user):
+			merged[str(nxt)] = bare
+	if merged == collected:
+		return None
+	step("tool-1", "تجهيز طلب", "Prepare request", "propose_write", "running")
+	result = dispatch(
+		"propose_write",
+		{"doctype": doctype, "action": "create", "values": merged},
+		chat_id,
+		lang,
+		user_text=None,
+	)
+	detail = _detail("propose_write", result, lang)
+	step("tool-1", "تجهيز طلب", "Prepare request", "propose_write", "done", detail=detail, detail_ar=detail)
+	return {"answer": "", "pending": result}
 
 
 def run_tool_loop(
@@ -446,14 +604,19 @@ def run_tool_loop(
 	"""Return {answer, pending}. Raises if the provider call fails."""
 	from erpnext_ai_assistant.services.conversation import build_messages
 
+	manual_rule = ""
+	if _erpnext_installed():
+		manual_rule = "For how-to / steps / manual questions, call search_manual and cite the returned url. "
 	rules = (
 		"You direct the tools. Call a tool before you state live data or prepare a write. "
 		"If the DocType is unclear, call list_doctypes with words from the user message, "
 		"then use only a name from that cached non-child list. Never invent a DocType. "
 		"For quantity questions (كم / عدد / how many / count) call count_records after you know the DocType. "
-		"For how-to / steps / manual / documentation questions, call search_manual and cite the returned url. "
-		"Use describe_doctype for the DocType the user named, not a similar one. "
-		"propose_write does not save. If it returns missing fields, ask for those labels and stop. "
+		+ manual_rule
+		+ "Use describe_doctype for the DocType the user named, not a similar one. "
+		"lookup_field and filter labels bind a fieldname only when exactly one readable hit comes back. "
+		"Otherwise ask using the returned candidates. Never invent a fieldname. "
+		"propose_write does not save. If it returns missing fields, ask for the next_ask label and stop. "
 		"On a follow-up, pass every value the user already gave, plus the new one. "
 		"Do not invent field values, dates, or phone numbers. "
 		"مهمة is ToDo. اجتماع is Event only when the user did not ask for a مهمة. "
@@ -471,12 +634,13 @@ def run_tool_loop(
 	)
 	pending = None
 	call_no = 0
+	signals: list = []
 	llm.begin_turn_deadline()
 	for _round in range(MAX_ROUNDS):
 		try:
-			message = llm.chat_message(messages, tools=TOOL_SPECS, chat_id=chat_id, lang=lang)
+			message = llm.chat_message(messages, tools=active_tool_specs(), chat_id=chat_id, lang=lang)
 		except (llm.CallLimitExceeded, llm.TurnDeadlineExceeded) as exc:
-			return {"answer": str(exc), "pending": pending}
+			return {"answer": str(exc), "pending": pending, "signals": signals}
 		tool_calls = message.get("tool_calls") or []
 		if not tool_calls:
 			from erpnext_ai_assistant.services.targeting import needs_live_check
@@ -485,8 +649,9 @@ def run_tool_loop(
 				return {
 					"answer": NOT_VERIFIED_AR if lang == "ar" else NOT_VERIFIED_EN,
 					"pending": pending,
+					"signals": signals,
 				}
-			return {"answer": message.get("content") or "", "pending": pending}
+			return {"answer": message.get("content") or "", "pending": pending, "signals": signals}
 		messages.append(
 			{
 				"role": "assistant",
@@ -507,6 +672,7 @@ def run_tool_loop(
 			label_ar, label_en = LABELS.get(name, (name, name))
 			step(f"tool-{call_no}", label_ar, label_en, name, "running")
 			result = dispatch(name, args, chat_id, lang, user_text=user)
+			_note_signal(signals, name, args, result)
 			if name == "propose_write" and result.get("status") in ("pending", "need_input", "failed"):
 				pending = result
 			detail = _detail(name, result, lang)
@@ -521,9 +687,9 @@ def run_tool_loop(
 			if pending and pending.get("status") in ("pending", "need_input", "failed"):
 				break
 		if pending and pending.get("status") in ("pending", "need_input", "failed"):
-			return {"answer": "", "pending": pending}
+			return {"answer": "", "pending": pending, "signals": signals}
 	try:
 		final = llm.chat_message(messages, tools=None, chat_id=chat_id, lang=lang)
 	except (llm.CallLimitExceeded, llm.TurnDeadlineExceeded) as exc:
-		return {"answer": str(exc), "pending": pending}
-	return {"answer": final.get("content") or "", "pending": pending}
+		return {"answer": str(exc), "pending": pending, "signals": signals}
+	return {"answer": final.get("content") or "", "pending": pending, "signals": signals}

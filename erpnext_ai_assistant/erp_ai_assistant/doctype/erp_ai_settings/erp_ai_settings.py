@@ -14,7 +14,7 @@ class ERPAISettings(Document):
 		frappe.only_for("System Manager")
 		from erpnext_ai_assistant.services.rdf.graph import rebuild_rdf_graph
 
-		return rebuild_rdf_graph()
+		return rebuild_rdf_graph(force_ttl=True)
 
 	@frappe.whitelist()
 	def reindex_rag(self):

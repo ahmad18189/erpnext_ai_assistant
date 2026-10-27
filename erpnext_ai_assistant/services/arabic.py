@@ -23,3 +23,18 @@ def normalize_arabic(text: str | None) -> str:
 	s = _TEH_RE.sub("ه", s)
 	s = re.sub(r"\s+", " ", s).strip().lower()
 	return s
+
+
+def strip_al(text: str | None) -> str:
+	"""Drop a leading definite article from already-normalized Arabic."""
+	s = normalize_arabic(text)
+	if s.startswith("ال") and len(s) > 2:
+		return s[2:].strip()
+	return s
+
+
+def arabic_tokens(text: str | None) -> list[str]:
+	norm = normalize_arabic(text)
+	if not norm:
+		return []
+	return [tok for tok in norm.split() if tok]

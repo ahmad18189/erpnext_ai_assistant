@@ -273,19 +273,20 @@ def get_chat_messages(chat_id: str):
 
 
 @frappe.whitelist()
-def bootstrap():
-	"""Panel boot: persona labels, overlay match, blocked state."""
+def bootstrap(route: str | None = None):
+	"""Panel boot: resolved persona, overlay match, blocked state."""
 	if frappe.session.user == "Guest":
 		return {"allowed": False, "reason": "guest"}
 	settings = frappe.get_single("ERP AI Settings")
 	blocked = abuse_mod.is_user_blocked()
-	persona = {"panel_label": "ERP Assistant", "panel_label_ar": "مساعد أعمالك"}
-	if settings.active_persona and frappe.db.exists("ERP AI Persona", settings.active_persona):
-		p = frappe.get_doc("ERP AI Persona", settings.active_persona)
-		persona = {
-			"panel_label": p.panel_label or "The ERPNext-AI-Assistant",
-			"panel_label_ar": p.panel_label_ar or "مساعد ERPNext",
-		}
+	from erpnext_ai_assistant.services.persona import resolve_persona
+
+	resolved = resolve_persona(route, frappe.session.user)
+	persona = {
+		"name": resolved.get("name") or "",
+		"panel_label": resolved.get("panel_label") or "Frappe helper",
+		"panel_label_ar": resolved.get("panel_label_ar") or "مساعد العمل",
+	}
 	pages = [
 		{"path_pattern": r.path_pattern, "label": r.label, "host_hint": r.host_hint, "enabled": r.enabled}
 		for r in (settings.overlay_pages or [])

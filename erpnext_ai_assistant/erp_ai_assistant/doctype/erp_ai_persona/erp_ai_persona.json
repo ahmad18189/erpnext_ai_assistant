@@ -62,6 +62,30 @@
    "in_standard_filter": 1
   },
   {
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority",
+   "default": "0",
+   "description": "Higher wins when route and app scores are equal."
+  },
+  {
+   "fieldname": "sec_affinity",
+   "fieldtype": "Section Break",
+   "label": "Affinity"
+  },
+  {
+   "fieldname": "match_apps",
+   "fieldtype": "Small Text",
+   "label": "Match Apps",
+   "description": "One installed app name per line. Empty means this persona is generic."
+  },
+  {
+   "fieldname": "match_routes",
+   "fieldtype": "Small Text",
+   "label": "Match Routes",
+   "description": "One route prefix per line, such as /crm. Empty means no route specialty."
+  },
+  {
    "fieldname": "avatar",
    "fieldtype": "Attach Image",
    "label": "Avatar"

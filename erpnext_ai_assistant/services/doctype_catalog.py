@@ -71,26 +71,41 @@ _EXTRA_LABELS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _readable(name: str) -> bool:
+	try:
+		return bool(frappe.has_permission(name, "read") or frappe.has_permission(name, "create"))
+	except Exception:
+		return False
+
+
 def _labels_for(name: str) -> list[str]:
-	"""English name plus Arabic translations and known everyday labels."""
+	"""DocType name, translated labels from the unified index, then a tiny fallback."""
 	labels = [name]
 	try:
-		ar = frappe.db.get_value(
-			"Translation",
-			{"source_text": name, "language": "ar"},
-			"translated_text",
-		)
-		if ar and ar not in labels:
-			labels.append(ar)
+		from erpnext_ai_assistant.services.rdf.graph import labels_for_doctype
+
+		for label in labels_for_doctype(name):
+			if label and label not in labels:
+				labels.append(label)
 	except Exception:
 		pass
-	try:
-		# Current language translation (often Arabic on this site)
-		translated = frappe._(name)
-		if translated and translated not in labels:
-			labels.append(translated)
-	except Exception:
-		pass
+	if len(labels) == 1:
+		try:
+			ar = frappe.db.get_value(
+				"Translation",
+				{"source_text": name, "language": "ar"},
+				"translated_text",
+			)
+			if ar and ar not in labels:
+				labels.append(ar)
+		except Exception:
+			pass
+		try:
+			translated = frappe._(name)
+			if translated and translated not in labels:
+				labels.append(translated)
+		except Exception:
+			pass
 	for extra in _EXTRA_LABELS.get(name) or ():
 		if extra not in labels:
 			labels.append(extra)
@@ -127,8 +142,14 @@ def match_catalog(text: str | None, limit: int = 5) -> list[dict]:
 	hits.sort(key=lambda item: (-item[0], -len(item[1]["name"])))
 	out = []
 	seen = set()
+	checked = 0
 	for score, row in hits:
 		if row["name"] in seen:
+			continue
+		checked += 1
+		if checked > 40:
+			break
+		if not _readable(row["name"]):
 			continue
 		seen.add(row["name"])
 		out.append({**row, "score": score})
@@ -141,16 +162,24 @@ def search_catalog(query: str | None, limit: int = 20) -> list[dict]:
 	"""Filter the cached catalog by a free-text query for the model tool."""
 	q = normalize_arabic(query)
 	if not q:
-		rows = get_doctype_catalog()
-		return [{"name": r["name"], "labels": r.get("labels") or []} for r in rows[:limit]]
-	# Prefer scored matches (includes Arabic everyday labels)
+		out = []
+		for row in get_doctype_catalog():
+			if not _readable(row["name"]):
+				continue
+			out.append({"name": row["name"], "labels": row.get("labels") or []})
+			if len(out) >= limit:
+				break
+		return out
+	# Prefer scored matches (includes Arabic everyday labels). match_catalog already checks read.
 	scored = match_catalog(query, limit=limit)
 	if scored:
 		return [{"name": r["name"], "labels": r.get("labels") or []} for r in scored]
 	# Fallback: token overlap on name + labels
 	matched = []
-	tokens = [tok for tok in q.split() if len(tok) >= 2]
+	tokens = [tok for tok in q.split() if len(tok) >= 3]
 	for row in get_doctype_catalog():
+		if not _readable(row["name"]):
+			continue
 		blob = normalize_arabic(" ".join([row["name"]] + (row.get("labels") or [])))
 		if q in blob or any(tok in blob for tok in tokens):
 			matched.append({"name": row["name"], "labels": row.get("labels") or []})

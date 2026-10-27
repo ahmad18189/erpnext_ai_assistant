@@ -9,7 +9,7 @@ The assistant is a Frappe app. It is not part of one CRM or HR product.
 - A host may also load `public/js/crm_include.js`. That file only injects this app's bundle. It does not contain product logic.
 - Colors, Cairo, and RTL live in this app. Do not copy the panel CSS into a theme app.
 
-`bootstrap` returns `overlay_pages`, `app_routes`, and `branding` (title, subtitle, hint, hint_en).
+`bootstrap(route)` returns the resolved persona, `overlay_pages`, `app_routes`, and `branding` (title, subtitle, hint, hint_en). The panel header shows that persona. Branding is only the fallback subtitle.
 
 ## run_chat order
 
@@ -18,11 +18,13 @@ The assistant is a Frappe app. It is not part of one CRM or HR product.
 3. Blocked User → fixed message, stop.
 4. Abuse scan. Every response includes `contains_abuse` and `abuse`.
 5. Work-scope gate. No model. A route under Desk or any installed app route counts as work. Follow-ups reuse recent user text.
-6. Load confirmed user-scope ERP AI Memory and the active persona.
-7. DocType targeting (`services/targeting.py`): create, count, or list when the wording names a DocType. Count uses `count_records` with no model call.
-8. Tool loop (`services/tools/agent.py`): describe, query, count, list DocTypes, list apps, lookup field, search knowledge, search ERPNext manual (`docs.frappe.io`), propose write. How-to questions skip DocType shortcuts and use `search_manual`. Retrieved text is quoted data in `conversation.py`, not a new system policy. A live quantity or list question with no tool call returns a fixed not-verified sentence.
-9. When the model is off or the key is missing, the regex detectors run instead, then skills and role-filtered RAG, then one completion.
-10. Per-user daily call cap and turn deadline stop further provider calls. Each provider call writes an ERP AI Audit Log row with DocType names, field names, image count, and request byte size only.
+6. Load confirmed user-scope ERP AI Memory. Infer DocType candidates, module, app, and action (`services/intent.py`). Resolve a persona from roles, then route, then the inferred app, then a generic persona (`services/persona.py`).
+7. DocType targeting (`services/targeting.py`): create, count, or list only when the catalog match and the action are both clear. Count uses `count_records` with no model call. A low-confidence match skips this shortcut.
+8. Tool loop (`services/tools/agent.py`): describe, query, count, list readable DocTypes, list apps, lookup field, search knowledge, search the ERPNext manual when `erpnext` is installed, propose write. A label binds to a fieldname only when lookup returns one readable hit. How-to questions skip DocType shortcuts. If the model also cannot pick among two or three candidates, the reply lists those DocTypes and a next step, and states no number. The user's choice is kept in chat session facts.
+9. When the model is off or the key is missing, the regex detectors run instead (lead and call detectors only if CRM Lead or Lead exists), then skills and role-filtered RAG, then one completion.
+10. Per-user daily call cap and turn deadline stop further provider calls. A saved 0 stays 0. Each provider call writes an ERP AI Audit Log row with DocType names, field names, image count, and request byte size only.
+11. A navigation ask ("افتح أداة الاستيراد", "take me to the import tool") becomes one `[[open:/desk/...]]` marker for a DocType the user can read. The panel button calls `frappe.set_route`. The path is never taken from the model.
+12. After the assistant message is saved, an unfinished turn may insert **ERP AI Enhancement** (System Manager only): not-verified, unknown tool, empty manual search, or an unrecovered tool error. Clarification, missing fields, approval, and permission replies do not. The suggestion is a fixed template. It is not a tool, not a panel tab, and it is not reindexed into RAG.
 
 ## Writes
 
@@ -70,9 +72,12 @@ Forms use tabs, sections, and column breaks. Child tables set `in_list_view` and
 | `imports.py` | Header vs import-template match. No row insert |
 | `moderation/` | Abuse terms and work gate |
 | `rag/` | Keyword overlap on stored chunks, filtered by skill roles. Not embeddings |
-| `rdf/` | JSON label-to-fieldname index for the current site, including Arabic name labels. Not a graph of business records |
+| `rdf/` | Site JSON index of translated DocType and field labels (Arabic via `get_all_translations`). Turtle only from the Settings button. Not a graph of business records |
+| `doctype_catalog.py` | Cached non-child DocTypes. Labels come from the index. Search results are limited to DocTypes the session can read |
+| `intent.py` | Per-turn guess of DocType, app, action, and confidence |
+| `persona.py` | Roles-first persona resolve by route and app |
 | `llm/provider.py` | OpenAI-compatible chat, including tool calls. Images are optional data URLs |
-| `tools/agent.py` | The seven tools the model may call (includes `count_records`). Memory save is panel-only |
+| `tools/agent.py` | Tools the model may call, including `count_records` and `list_doctypes`. `search_manual` is omitted when ERPNext is not installed. Memory save is panel-only |
 | `tools/registry.py` | Session-user tools and `propose_write` |
 
 ## Tools

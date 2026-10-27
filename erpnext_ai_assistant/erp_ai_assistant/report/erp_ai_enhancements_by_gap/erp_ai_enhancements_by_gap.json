@@ -1,0 +1,15 @@
+{
+ "doctype": "Report",
+ "name": "ERP AI Enhancements by Gap",
+ "report_name": "ERP AI Enhancements by Gap",
+ "module": "ERP AI Assistant",
+ "report_type": "Query Report",
+ "is_standard": "Yes",
+ "ref_doctype": "ERP AI Enhancement",
+ "query": "select gap_key as \"Gap Key:Data:220\", kind as \"Kind:Data:140\", count(name) as \"Turns:Int:80\", max(modified) as \"Last Seen:Datetime:160\"\nfrom `tabERP AI Enhancement`\ngroup by gap_key, kind\norder by count(name) desc",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ]
+}

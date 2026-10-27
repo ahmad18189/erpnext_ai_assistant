@@ -44,6 +44,7 @@ DENIED_DOCTYPES = {
 	"Workspace",
 	"ERP AI Pending Action",
 	"ERP AI Audit Log",
+	"ERP AI Enhancement",
 	"ERP AI Knowledge Chunk",
 	"ERP AI Knowledge Document",
 	"ERP AI Metadata Cache",
@@ -224,6 +225,84 @@ def _label(text: str | None, lang: str) -> str:
 	return translated or source
 
 
+def next_step_payload(doctype: str, prepared: dict, lang: str = "en") -> dict:
+	"""One missing field at a time, with labels the session user may write."""
+	meta = None
+	try:
+		meta = frappe.get_meta(doctype)
+		perm = "write" if frappe.has_permission(doctype, "create") else "read"
+		permitted = set(meta.get_permitted_fieldnames(permission_type=perm) or [])
+	except Exception:
+		permitted = set()
+	missing = []
+	for item in prepared.get("missing") or []:
+		fieldname = item.get("fieldname") or ""
+		base = fieldname.split(".", 1)[0]
+		if permitted and base and base not in permitted and "." not in fieldname:
+			continue
+		label_en = item.get("label") or fieldname
+		label_ar = _label(label_en, "ar")
+		options = item.get("options")
+		if not options:
+			try:
+				df = meta.get_field(base) if base else None
+				if df and df.fieldtype == "Select":
+					options = df.options
+			except Exception:
+				options = None
+		missing.append(
+			{
+				"fieldname": fieldname,
+				"label_ar": label_ar,
+				"label_en": label_en,
+				"fieldtype": item.get("fieldtype"),
+				"options": options or None,
+			}
+		)
+	collected = {}
+	for key, value in (prepared.get("payload") or {}).items():
+		if str(key).startswith("_"):
+			continue
+		if isinstance(value, (str, int, float, bool)) or value is None:
+			collected[key] = value
+	next_ask = ""
+	if missing:
+		first = missing[0]
+		label = first["label_ar"] if lang == "ar" else first["label_en"]
+		next_ask = f"أرسل {label}." if lang == "ar" else f"Send {label}."
+	return {"missing": missing, "next_ask": next_ask, "collected": collected}
+
+
+def guided_message(doctype: str, prepared: dict, lang: str = "en") -> tuple[str, dict]:
+	"""One-field ask plus a short list of the other missing labels."""
+	step = next_step_payload(doctype, prepared, lang)
+	missing = step.get("missing") or []
+	if not missing:
+		return missing_message(doctype, prepared, lang), step
+	first = missing[0]
+	label = first["label_ar"] if lang == "ar" else first["label_en"]
+	options = []
+	if first.get("fieldtype") == "Select" and first.get("options"):
+		options = [opt.strip() for opt in str(first["options"]).split("\n") if opt.strip()][:8]
+	names = []
+	for item in missing[:8]:
+		names.append(item["label_ar"] if lang == "ar" else item["label_en"])
+	if lang == "ar":
+		text = f"أرسل {label}."
+		if options:
+			text += " الخيارات: " + "، ".join(options) + "."
+		text += "\nالحقول الناقصة: " + "، ".join(names)
+		text += "\nلن أخمن القيم، ولن يُحفظ شيء قبل موافقتك."
+	else:
+		text = f"Send {label}."
+		if options:
+			text += " Options: " + ", ".join(options) + "."
+		text += "\nStill missing: " + ", ".join(names)
+		text += "\nI will not guess values, and nothing is saved until you approve."
+	step["next_ask"] = text.split("\n", 1)[0]
+	return text, step
+
+
 def missing_message(doctype: str, prepared: dict, lang: str = "en") -> str:
 	lines = []
 	for item in prepared.get("missing") or []:
@@ -342,13 +421,18 @@ def propose_schema_write(
 	values = _values_for_create(doctype, text or "")
 	prepared = prepare_payload(doctype, values, "create")
 	if prepared["missing"] or prepared["errors"]:
+		message_en, step_en = guided_message(doctype, prepared, "en")
+		message_ar, step_ar = guided_message(doctype, prepared, "ar")
+		step = step_ar if lang == "ar" else step_en
 		return {
 			"error": "missing_required",
 			"status": "need_input",
 			"target_doctype": doctype,
 			"action_type": "create",
-			"message_en": missing_message(doctype, prepared, "en"),
-			"message_ar": missing_message(doctype, prepared, "ar"),
+			"message_en": message_en,
+			"message_ar": message_ar,
+			"next_ask": step.get("next_ask"),
+			"next_step": step,
 		}
 	if not chat_id:
 		return {"error": "missing_chat", "status": "failed", "message_en": "No chat.", "message_ar": "لا توجد محادثة."}
@@ -377,21 +461,70 @@ def _values_for_create(doctype: str, text: str) -> dict:
 
 
 def extract_field_values(doctype: str, text: str) -> dict:
-	"""Read field=value or label: value pairs. Unmentioned fields stay absent."""
+	"""Read field=value or label: value pairs, including Arabic labels.
+
+	A label that matches more than one field is left absent so the caller asks.
+	"""
 	described = describe_doctype(doctype)
-	found: dict = {}
+	try:
+		from erpnext_ai_assistant.services.rdf.graph import field_aliases
+
+		alias_map = field_aliases(doctype)
+	except Exception:
+		alias_map = {}
+	from erpnext_ai_assistant.services.arabic import normalize_arabic
+
+	raw = text or ""
+	norm = normalize_arabic(raw)
+	exact: dict[str, str] = {}
+	by_label: dict[str, tuple[str, int]] = {}
 	for df in described["fields"]:
 		if df["read_only"]:
 			continue
-		keys = [df["fieldname"]]
+		fieldname = df["fieldname"]
+		labels = [fieldname]
 		if df.get("label"):
-			keys.append(df["label"])
-		for key in keys:
+			labels.append(df["label"])
+			translated = _label(df["label"], "ar")
+			if translated:
+				labels.append(translated)
+		for alias in alias_map.get(fieldname) or []:
+			labels.append(alias)
+		seen = set()
+		for key in labels:
+			token = (key or "").strip()
+			if not token or token in seen:
+				continue
+			seen.add(token)
 			match = re.search(
-				rf"(?i)(?<![A-Za-z0-9_]){re.escape(key)}\s*[:=]?\s+(\S[^\n,;]*)",
-				text or "",
+				rf"(?i)(?<![A-Za-z0-9_]){re.escape(token)}\s*[:=]?\s+(\S[^\n,;]*)",
+				raw,
 			)
-			if match:
-				found[df["fieldname"]] = match.group(1).strip()
-				break
-	return found
+			value = match.group(1).strip() if match else ""
+			strength = len(normalize_arabic(token))
+			if not value and norm:
+				alias = normalize_arabic(token)
+				if alias and len(alias) >= 2:
+					alias_match = re.search(
+						rf"(?<!\w){re.escape(alias)}\s*[:=]?\s+(\S+)",
+						norm,
+					)
+					if alias_match:
+						value = alias_match.group(1).strip()
+						strength = len(alias)
+			if not value:
+				continue
+			if normalize_arabic(token) == normalize_arabic(fieldname):
+				exact[fieldname] = value
+				continue
+			previous = by_label.get(fieldname)
+			if not previous or strength > previous[1]:
+				by_label[fieldname] = (value, strength)
+	if len(by_label) == 1:
+		fieldname, (value, _strength) = next(iter(by_label.items()))
+		exact.setdefault(fieldname, value)
+	elif len(by_label) > 1:
+		ranked = sorted(by_label.items(), key=lambda item: item[1][1], reverse=True)
+		if ranked[0][1][1] >= ranked[1][1][1] + 3:
+			exact.setdefault(ranked[0][0], ranked[0][1][0])
+	return exact

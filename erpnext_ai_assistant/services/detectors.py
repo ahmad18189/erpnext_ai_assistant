@@ -67,9 +67,14 @@ def gather_context(
 		steps.append(s)
 		tools.publish_step(chat_id or "", s)
 
+	# Lead and call shortcuts exist only when that DocType is installed.
+	lead_installed = bool(
+		frappe.db.exists("DocType", "CRM Lead") or frappe.db.exists("DocType", "Lead")
+	)
+
 	# --- Add a call on a lead (before generic lead-create) ---
 	recent = recent_user_texts or []
-	if _wants_call(msg, recent):
+	if lead_installed and _wants_call(msg, recent):
 		add_step("write", "اقتراح مكالمة", "Propose call", "propose_write", "running")
 		pending = _propose_create_call(msg, recent, chat_id=chat_id, lang=lang)
 		tool_parts.append(
@@ -79,7 +84,7 @@ def gather_context(
 		add_step("write", "اقتراح مكالمة", "Propose call", "propose_write")
 
 	# --- Create lead (Pending Action — never silent write) ---
-	create_source = None if pending else _create_lead_source(msg, facts, recent)
+	create_source = None if pending or not lead_installed else _create_lead_source(msg, facts, recent)
 	if create_source:
 		add_step("write", "اقتراح إنشاء عميل", "Propose create lead", "propose_write", "running")
 		pending = _propose_create_lead(create_source, chat_id=chat_id, lang=lang)
@@ -107,7 +112,8 @@ def gather_context(
 
 	# --- CRM Lead name search (skip when creating) ---
 	if (
-		not pending
+		lead_installed
+		and not pending
 		and not CREATE_LEAD.search(msg)
 		and not asking_about_app
 		and tools.NAME_HINT.search(msg)

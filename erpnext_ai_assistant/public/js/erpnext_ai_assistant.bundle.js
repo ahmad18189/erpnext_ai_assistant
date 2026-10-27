@@ -12,7 +12,7 @@
       newChat: "جديد",
       close: "إغلاق",
       send: "إرسال",
-      placeholder: "اسأل عن العملاء أو الفواتير أو المخزون… (عمل فقط)",
+      placeholder: "اسأل عن سجل أو نوع مستند أو خطوة عمل… (عمل فقط)",
       thinking: "التفكير",
       thoughtFor: "فكّر لـ {0} ث",
       empty: "ابدأ بسؤال متعلق بالعمل على هذا الموقع.",
@@ -50,7 +50,7 @@
       newChat: "New",
       close: "Close",
       send: "Send",
-      placeholder: "Ask about leads, invoices, stock… (work only)",
+      placeholder: "Ask about a record, a DocType, or a work step… (work only)",
       thinking: "Thinking",
       thoughtFor: "Thought for {0}s",
       empty: "Ask a work-related question about this site.",
@@ -302,7 +302,7 @@
 
     var branding = (state.boot && state.boot.branding) || {};
     var brandMain = branding.title || t("brand");
-    var brandSub = branding.subtitle || t("subtitle");
+    var brandSub = personaLine();
     var hint =
       state.lang === "ar"
         ? branding.hint || t("workOnly")
@@ -315,7 +315,7 @@
     var header = el("div", "erp-ai-header");
     var brand = el("div", "erp-ai-brand");
     brand.appendChild(textNode("strong", "", brandMain));
-    brand.appendChild(textNode("span", "", brandSub));
+    brand.appendChild(textNode("span", "erp-ai-persona", brandSub));
     header.appendChild(brand);
     var actions = el("div", "erp-ai-header-actions");
     var langBtn = el("button", "", state.lang === "ar" ? "EN" : "ع");
@@ -741,7 +741,7 @@
     if (extra && extra.thinking) wrap.appendChild(extra.thinking);
     var parsed = parseOpenLinks(content || "");
     var bubble = el("div", "bubble");
-    if (role === "assistant") {
+    if (role === "assistant" && !(extra && extra.plain)) {
       bubble.classList.add("erp-ai-md");
       bubble.innerHTML = renderMarkdown(parsed.text);
     } else {
@@ -1287,7 +1287,12 @@
         state.steps = res.steps || state.steps;
         state.thinkingMs = Date.now() - started;
         if (asstWrap && asstWrap.parentNode) asstWrap.parentNode.removeChild(asstWrap);
+        if (res.persona && typeof res.persona === "object") {
+          state.persona = res.persona;
+          applyPersonaLabel();
+        }
         var bubble = appendMsg("assistant", res.message || "", {
+          plain: !!res.next_ask,
           thinking: thinkingBlock(state.steps, state.thinkingMs),
           charts: res.charts || [],
           ack: res.pending_action
@@ -1339,7 +1344,7 @@
   }
 
   function bootAndMaybeMount() {
-    call("erpnext_ai_assistant.api.chat.bootstrap", {})
+    call("erpnext_ai_assistant.api.chat.bootstrap", { route: location.pathname || "" })
       .then(function (boot) {
         state.boot = boot || {};
         if (!boot || boot.allowed === false) {
@@ -1370,6 +1375,38 @@
     }, 250);
   }
 
+  function personaLine() {
+    var persona = state.persona || (state.boot && state.boot.persona) || null;
+    if (persona && typeof persona === "object") {
+      var label =
+        state.lang === "ar"
+          ? persona.panel_label_ar || persona.panel_label
+          : persona.panel_label || persona.panel_label_ar;
+      if (label) return label;
+    }
+    var branding = (state.boot && state.boot.branding) || {};
+    return branding.subtitle || t("subtitle");
+  }
+
+  function applyPersonaLabel() {
+    var node = document.querySelector("#erp-ai-root .erp-ai-persona");
+    if (node) node.textContent = personaLine();
+  }
+
+  function watchRoute() {
+    var last = location.pathname;
+    setInterval(function () {
+      if (location.pathname === last) return;
+      last = location.pathname;
+      call("erpnext_ai_assistant.api.chat.bootstrap", { route: last }).then(function (boot) {
+        if (!boot) return;
+        state.boot = boot;
+        if (boot.persona) state.persona = boot.persona;
+        applyPersonaLabel();
+      });
+    }, 1000);
+  }
+
   function start() {
     var run = function () {
       whenCsrfReady(bootAndMaybeMount);
@@ -1379,6 +1416,7 @@
     } else {
       run();
     }
+    watchRoute();
   }
 
   start();

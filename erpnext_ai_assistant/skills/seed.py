@@ -10,6 +10,25 @@ CRM_ROLES = [
 
 SKILL_SEEDS = [
 	{
+		"title": "Frappe core",
+		"enabled": 1,
+		"priority": 1,
+		"routes": "",
+		"doctypes": "ToDo, Event, Note",
+		"roles": [{"role": "All"}],
+		"description": """# Frappe core
+
+Desk basics on any site, including a site that has only Frappe.
+
+- **ToDo**: description, date, status. Arabic مهمة / مهام maps here, not to a DocType named Meeting.
+- **Event**: subject, starts_on. Use this for اجتماع only when the user did not ask for a task.
+- **Note**: title, content.
+
+When the DocType is unclear, call list_doctypes and use only a returned name.
+Quantities come from count_records. Creates go through propose_write, one missing field at a time.
+""",
+	},
+	{
 		"title": "Site installed apps",
 		"enabled": 1,
 		"priority": 5,

@@ -78,37 +78,41 @@ _LIST_FIELDS = {
 
 
 def match_doctype(text: str | None) -> str | None:
-	"""The DocType the user named. Returns None when the match is not clear."""
+	"""The DocType the user named. Returns None when the match is not clear.
+
+	The catalog and translated labels are the primary match. Phrase lists only
+	raise the score of a known DocType; they never invent one.
+	"""
 	norm = normalize_arabic(text)
 	if not norm:
 		return None
+	scored: dict[str, int] = {}
+	for row in match_catalog(text, limit=8):
+		scored[row["name"]] = int(row.get("score") or 0)
 	if any(_has(norm, word) for word in _TASK_WORDS):
-		return _first_existing(("ToDo",))
-	found: list[tuple[int, tuple[str, ...]]] = []
+		if _first_existing(("ToDo",)):
+			scored["ToDo"] = scored.get("ToDo", 0) + 30
 	for phrases, names in _PHRASES:
 		for phrase in phrases:
-			if _has(norm, phrase):
-				found.append((len(phrase), names))
+			if not _has(norm, phrase):
+				continue
+			boost = len(normalize_arabic(phrase)) + 6
+			for name in names:
+				if _first_existing((name,)):
+					scored[name] = max(scored.get(name, 0), boost)
+			break
 	for word, doctype in _SYNONYMS.items():
-		if _has(norm, word):
-			found.append((len(word), (doctype,)))
-	found.sort(key=lambda item: item[0], reverse=True)
-	for _length, names in found:
-		hit = _first_existing(names)
-		if hit:
-			return hit
-	# Cached non-child DocTypes (name + translated labels)
-	catalog_hits = match_catalog(text, limit=3)
-	if not catalog_hits:
+		if _has(norm, word) and _first_existing((doctype,)):
+			scored[doctype] = max(scored.get(doctype, 0), len(word) + 4)
+	if not scored:
 		return None
-	top = catalog_hits[0]
-	# Ambiguous when two hits are close in score — leave it to the AI.
-	if len(catalog_hits) > 1 and catalog_hits[1]["score"] >= top["score"] - 2:
+	ranked = sorted(scored.items(), key=lambda item: (-item[1], -len(item[0])))
+	top_name, top_score = ranked[0]
+	if len(ranked) > 1 and ranked[1][1] >= top_score - 2:
 		return None
-	name = top["name"]
-	if name in DENIED_DOCTYPES:
+	if top_name in DENIED_DOCTYPES:
 		return None
-	return name
+	return top_name
 
 
 def interpret(text: str | None) -> dict | None:
@@ -181,7 +185,30 @@ def format_query(doctype: str, rows: list[dict], lang: str, capped: bool = False
 
 
 def list_fields(doctype: str) -> list[str]:
-	return list(_LIST_FIELDS.get(doctype) or ["name"])
+	"""List columns: a known override, otherwise title_field plus in-list fields."""
+	override = _LIST_FIELDS.get(doctype)
+	if override:
+		return list(override)
+	try:
+		meta = frappe.get_meta(doctype)
+	except Exception:
+		return ["name"]
+	fields = ["name"]
+	title = getattr(meta, "title_field", None)
+	if title and title not in fields:
+		fields.append(title)
+	for df in meta.fields:
+		if df.in_list_view and df.fieldname and df.fieldname not in fields:
+			fields.append(df.fieldname)
+		if len(fields) >= 6:
+			break
+	try:
+		permitted = set(meta.get_permitted_fieldnames(permission_type="read") or [])
+	except Exception:
+		permitted = set()
+	if permitted:
+		fields = [field for field in fields if field in permitted or field == "name"]
+	return fields or ["name"]
 
 
 def _values(doctype: str, text: str) -> dict:

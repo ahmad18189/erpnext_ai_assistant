@@ -24,8 +24,16 @@ def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
 
 
 def reindex_knowledge():
+	"""Rebuild skill chunks. ERP AI Enhancement rows are never knowledge."""
 	if not frappe.db.exists("DocType", "ERP AI Knowledge Document"):
 		return
+	if frappe.db.has_column("ERP AI Knowledge Document", "source_key"):
+		for name in frappe.get_all(
+			"ERP AI Knowledge Document",
+			filters={"source_key": ["like", "enhancement:%"]},
+			pluck="name",
+		):
+			_delete_document(name)
 	for name in frappe.get_all("ERP AI Knowledge Document", filters={"source_type": "skill"}, pluck="name"):
 		_delete_document(name)
 	if frappe.db.exists("DocType", "ERP AI Skill"):
@@ -50,6 +58,8 @@ def reindex_knowledge():
 
 
 def _upsert_document(key: str, title: str, content: str, source_type: str, source_roles: str = "") -> str:
+	if (key or "").startswith("enhancement:") or title == "ERP AI Enhancement":
+		return ""
 	existing = _find_source(key, title if source_type != "skill" else None)
 	if existing:
 		doc = frappe.get_doc("ERP AI Knowledge Document", existing)

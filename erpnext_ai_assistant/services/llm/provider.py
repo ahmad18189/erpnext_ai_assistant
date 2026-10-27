@@ -147,7 +147,7 @@ def begin_turn_deadline(settings=None):
 	import time
 
 	frappe.flags.erp_ai_turn_started = time.time()
-	frappe.flags.erp_ai_turn_deadline = int(getattr(settings, "turn_deadline_seconds", None) or 90)
+	frappe.flags.erp_ai_turn_deadline = _stored_int(settings, "turn_deadline_seconds", 90)
 
 
 def _check_turn_deadline(lang: str):
@@ -161,9 +161,17 @@ def _check_turn_deadline(lang: str):
 		raise TurnDeadlineExceeded(lang)
 
 
+def _stored_int(settings, field: str, default: int) -> int:
+	"""None or blank uses the default. A saved 0 stays 0."""
+	value = getattr(settings, field, None)
+	if value is None or value == "":
+		return default
+	return int(value)
+
+
 def _consume_call_quota(settings, lang: str):
 	user = frappe.session.user or "Guest"
-	cap = int(getattr(settings, "max_calls_per_user_day", None) or 100)
+	cap = _stored_int(settings, "max_calls_per_user_day", 100)
 	key = f"erp_ai_calls:{user}:{date.today().isoformat()}"
 	used = int(frappe.cache().get_value(key) or 0)
 	if used >= cap:

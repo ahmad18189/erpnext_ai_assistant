@@ -14,12 +14,13 @@ from erpnext_ai_assistant.services.moderation.abuse import DEFAULT_ABUSE_TERMS
 
 PERSONA_NAME = "Workplace Assistant"
 PERSONA_TONE = (
-	"You are The ERPNext-AI-Assistant, a workplace ERP/CRM helper for this site only. "
-	"Be concrete with live counts and samples from tools. Never invent DocType fields, "
-	"phone numbers, or e-invoice clearance IDs. Prefer Arabic when the user writes Arabic. "
-	"For how-to questions, use search_manual and cite the docs URL. "
-	"For quantity questions, use count_records. Never claim you cannot build charts."
+	"You are a Frappe framework assistant for this site. "
+	"Help with any DocType the signed-in user can read, including custom apps. "
+	"Resolve Arabic labels from translations and the DocType schema. Never invent fieldnames. "
+	"Use count_records for quantities. Ask one missing field at a time on creates. "
+	"Prefer Arabic when the user writes Arabic. Nothing is saved until the user approves."
 )
+GENERIC_PERSONA = "Frappe helper"
 
 
 def after_install():
@@ -35,6 +36,7 @@ def after_migrate():
 def _bootstrap():
 	_ensure_settings()
 	_seed_persona()
+	_seed_framework_personas()
 	_seed_skills()
 	_seed_settings_children()
 	_seed_desktop_icon()
@@ -44,18 +46,18 @@ def _bootstrap():
 def _rebuild_indexes():
 	"""Safe to re-run: catalog/RDF/RAG rebuild from current DocTypes and skills."""
 	try:
+		from erpnext_ai_assistant.services.rdf.graph import rebuild_rdf_graph
+
+		rebuild_rdf_graph()
+	except Exception:
+		frappe.log_error(title="ERP AI RDF rebuild")
+	try:
 		from erpnext_ai_assistant.services.doctype_catalog import clear_doctype_catalog, get_doctype_catalog
 
 		clear_doctype_catalog()
 		get_doctype_catalog(force=True)
 	except Exception:
 		frappe.log_error(title="ERP AI DocType catalog rebuild")
-	try:
-		from erpnext_ai_assistant.services.rdf.graph import rebuild_rdf_graph
-
-		rebuild_rdf_graph()
-	except Exception:
-		frappe.log_error(title="ERP AI RDF rebuild")
 	try:
 		from erpnext_ai_assistant.services.rag.service import reindex_knowledge
 
@@ -131,9 +133,6 @@ def _ensure_settings():
 		if current in (None, ""):
 			doc.set(fieldname, value)
 			changed = True
-		elif fieldname in ("max_calls_per_user_day", "turn_deadline_seconds") and current == 0:
-			doc.set(fieldname, value)
-			changed = True
 
 	site_key = frappe.conf.get("erp_ai_openai_api_key")
 	if site_key and not doc.api_key and meta.has_field("api_key"):
@@ -189,11 +188,12 @@ def _seed_settings_children():
 	for row in wanted_overlays:
 		if row["path_pattern"] not in existing_paths:
 			doc.append("overlay_pages", row)
+			existing_paths.add(row["path_pattern"])
 			changed = True
 
-	# Link active persona only when unset.
+	# Link the generic persona only when unset. A saved choice stays.
 	if not doc.active_persona and frappe.db.exists("DocType", "ERP AI Persona"):
-		name = frappe.db.get_value("ERP AI Persona", {"persona_name": PERSONA_NAME}, "name")
+		name = frappe.db.get_value("ERP AI Persona", {"persona_name": GENERIC_PERSONA}, "name")
 		if name:
 			doc.active_persona = name
 			changed = True
@@ -207,25 +207,137 @@ def _seed_persona():
 		return
 	if frappe.db.exists("ERP AI Persona", {"persona_name": PERSONA_NAME}):
 		return
-	if frappe.db.exists("ERP AI Persona", {"panel_label": "The ERPNext-AI-Assistant"}):
-		return
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Persona",
 			"persona_name": PERSONA_NAME,
 			"enabled": 1,
 			"panel_label": "The ERPNext-AI-Assistant",
-			"panel_label_ar": "مساعد ERPNext",
+			"panel_label_ar": "مساعد العمل",
 			"default_language": "ar",
 			"tone_instructions": PERSONA_TONE,
-			"roles": [
-				{"role": "System Manager"},
-				{"role": "Sales User"},
-				{"role": "Sales Manager"},
-			],
+			"roles": _roles_that_exist(
+				[
+					{"role": "System Manager"},
+					{"role": "Sales User"},
+					{"role": "Sales Manager"},
+				]
+			),
 		}
 	)
 	doc.insert(ignore_permissions=True)
+
+
+def _roles_that_exist(rows: list | None) -> list:
+	"""Drop Role links that are not on this site. Keep the parent row."""
+	kept = []
+	for row in rows or []:
+		role = (row or {}).get("role")
+		if role and frappe.db.exists("Role", role):
+			kept.append({"role": role})
+	return kept
+
+
+def seed_plan(installed: set[str] | None = None, doctypes: set[str] | None = None) -> dict:
+	"""Names a fresh site would insert. Existing rows are never deleted by the caller."""
+	if installed is None:
+		try:
+			installed = set(frappe.get_installed_apps())
+		except Exception:
+			installed = set()
+	else:
+		installed = set(installed)
+	if doctypes is None:
+		doctypes = set()
+		if frappe.db.exists("DocType", "CRM Lead"):
+			doctypes.add("CRM Lead")
+	else:
+		doctypes = set(doctypes)
+	skills = ["Frappe core", "Site installed apps"]
+	personas = [GENERIC_PERSONA, PERSONA_NAME]
+	if "erpnext" in installed:
+		skills.extend(["ERPNext manual how-to", "Stock", "Finance / invoices"])
+		personas.append("ERPNext helper")
+	if "CRM Lead" in doctypes:
+		skills.append("CRM leads & deals")
+	if "crm" in installed:
+		personas.append("CRM helper")
+	if "hrms" in installed:
+		skills.append("HR / payroll")
+	return {"skills": skills, "personas": personas}
+
+
+def _insert_persona(payload: dict) -> None:
+	"""Insert a persona once. Skip when the name already exists. Never update tone."""
+	if frappe.db.exists("ERP AI Persona", {"persona_name": payload.get("persona_name")}):
+		return
+	meta = frappe.get_meta("ERP AI Persona")
+	data = {"doctype": "ERP AI Persona"}
+	for key, value in payload.items():
+		if key == "roles":
+			data[key] = _roles_that_exist(value)
+			continue
+		if meta.has_field(key):
+			data[key] = value
+	frappe.get_doc(data).insert(ignore_permissions=True)
+
+
+def _seed_framework_personas():
+	"""Generic persona always; specialty personas only when that app is installed."""
+	if not frappe.db.exists("DocType", "ERP AI Persona"):
+		return
+	_insert_persona(
+		{
+			"persona_name": GENERIC_PERSONA,
+			"enabled": 1,
+			"panel_label": "Frappe helper",
+			"panel_label_ar": "مساعد العمل",
+			"default_language": "ar",
+			"priority": 0,
+			"tone_instructions": PERSONA_TONE,
+			"roles": [],
+		}
+	)
+	optional = [
+		(
+			"ERPNext helper",
+			"erpnext",
+			20,
+			"ERPNext helper",
+			"مساعد ERPNext",
+			"Help with ERPNext DocTypes this user can read. Use count_records for quantities "
+			"and the manual tool for how-to questions. Never invent fields.",
+		),
+		(
+			"CRM helper",
+			"crm",
+			30,
+			"CRM helper",
+			"مساعد العلاقات",
+			"Help with CRM DocTypes this user can read. Map Arabic name labels to lead_name "
+			"when that field exists. Creates stay pending until the user approves.",
+		),
+	]
+	try:
+		installed = set(frappe.get_installed_apps())
+	except Exception:
+		installed = set()
+	for name, app, priority, label, label_ar, tone in optional:
+		if app not in installed:
+			continue
+		_insert_persona(
+			{
+				"persona_name": name,
+				"enabled": 1,
+				"panel_label": label,
+				"panel_label_ar": label_ar,
+				"default_language": "ar",
+				"priority": priority,
+				"match_apps": app,
+				"tone_instructions": tone,
+				"roles": [],
+			}
+		)
 
 
 def _seed_skills():
@@ -234,10 +346,15 @@ def _seed_skills():
 		return
 	from erpnext_ai_assistant.skills.seed import SKILL_SEEDS
 
+	allowed = set(seed_plan()["skills"])
 	for seed in SKILL_SEEDS:
+		if seed["title"] not in allowed:
+			continue
 		if frappe.db.exists("ERP AI Skill", {"title": seed["title"]}):
 			continue
-		doc = frappe.get_doc({"doctype": "ERP AI Skill", **seed})
+		payload = dict(seed)
+		payload["roles"] = _roles_that_exist(seed.get("roles"))
+		doc = frappe.get_doc({"doctype": "ERP AI Skill", **payload})
 		doc.insert(ignore_permissions=True)
 
 

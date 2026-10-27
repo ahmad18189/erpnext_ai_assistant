@@ -1,7 +1,7 @@
 # The ERPNext-AI-Assistant
 
-Workplace AI assistant for **Frappe / ERPNext** (and related CRM/HRMS hosts).  
-It ships as a Frappe app (`erpnext_ai_assistant`) with an Arabic-first RTL chat panel, session-scoped ERP tools, RAG/RDF retrieval, abuse moderation, and a Pending Action flow for writes.
+Workplace assistant for any **Frappe** site. ERPNext, HRMS, CRM, and custom apps are optional.  
+It ships as a Frappe app (`erpnext_ai_assistant`) with an Arabic-first RTL chat panel, session-scoped tools, a translated DocType label index, abuse moderation, and a Pending Action flow for writes.
 
 > **Product name:** The ERPNext-AI-Assistant  
 > **Default header:** ERP Assistant / مساعد أعمالك (editable in Settings)  
@@ -13,14 +13,17 @@ It ships as a Frappe app (`erpnext_ai_assistant`) with an Arabic-first RTL chat 
 
 | Capability | Behavior |
 |---|---|
-| Chat panel | FAB and overlay on Desk and on every installed app route |
-| Live ERP reads | Session-user `get_list` / `get_doc` / reports — **no** `ignore_permissions` |
-| Writes | Schema check, then **ERP AI Pending Action**. Payload is locked. User must approve once |
-| Memory | Rolling chat summary + session facts so follow-ups keep context |
+| Chat panel | FAB and overlay on Desk and on every installed app route. Header shows the resolved persona |
+| Live reads | Session-user `get_list` / `count_records` / `get_doc` — **no** `ignore_permissions` |
+| Arabic labels | Translated DocType and field index. A field name is used only when exactly one readable field matches |
+| Desk links | "Open the import tool" returns a same-site `/desk/...` button. The model cannot supply the path |
+| Writes | Schema check, then one missing field at a time, then **ERP AI Pending Action**. Nothing is saved until you approve |
+| Personas | Roles first, then route, then the app implied by the message. A blank active persona is Frappe helper |
+| Memory | Confirmed user facts only, plus rolling chat facts so a follow-up keeps the chosen DocType |
 | Charts | Server-built SVG charts (no heavy chart libraries in the panel) |
 | Moderation | Abuse term scan → event → threshold block; work-only gate before the model |
-| Knowledge | Skills, Persona, Memory DocTypes + RAG chunks + RDF metadata graph |
-| LLM | OpenAI-compatible chat. The model chooses an allowlisted tool; the server checks permission and schema. Regex routing is the fallback when no key is set |
+| Gaps | Unfinished turns are stored on **ERP AI Enhancement** for a later release. The model does not implement them |
+| LLM | OpenAI-compatible chat. The model chooses an allowlisted tool; the server checks permission and schema |
 
 Permissions and Frappe roles always win. Guests cannot chat.
 
@@ -43,11 +46,12 @@ Permissions and Frappe roles always win. Guests cannot chat.
 │  3. Ensure ERP AI Chat + Message                            │
 │  4. Abuse scan          → contains_abuse on every response  │
 │  5. Work-scope gate     (deterministic, no LLM)             │
-│  6. Skills + Persona + Memory                               │
-│  7. RAG retrieve                                            │
-│  8. Detectors + DocType schema (no invented fields)        │
-│  9. LLM complete        (OpenAI last; images if attached)  │
-│ 10. Charts / locked Pending Action back to the panel       │
+│  6. Memory + persona (roles, route, inferred app)          │
+│  7. Desk link, or count / list / create when the match     │
+│     is clear. Otherwise the tool loop                      │
+│  8. Detectors only when the model is off                    │
+│  9. Save the reply. Record an Enhancement row if the       │
+│     turn could not be finished                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,13 +70,15 @@ Do **not** put assistant CSS into a theme app.
 |---|---|
 | Conversation | ERP AI Chat, ERP AI Message, ERP AI Generated Query, ERP AI Generated Chart |
 | Knowledge | ERP AI Knowledge Document, ERP AI Knowledge Chunk, ERP AI Metadata Cache |
-| Safety / writes | ERP AI Pending Action, ERP AI Abuse Event, ERP AI Audit Log |
+| Safety / writes | ERP AI Pending Action, ERP AI Abuse Event, ERP AI Audit Log, ERP AI Enhancement |
 | Config | ERP AI Skill (+ Role), ERP AI Persona (+ Role), ERP AI Memory |
 | Settings (Single) | Abuse Term, Notify Role, Blocked User, Overlay Page children |
 
 **Workspace:** `The ERPNext-AI-Assistant` (System Manager).
 
-**Reports:** ERP AI Chats by User · Abuse Summary · Pending Actions · Skill Usage · Memory Overview.
+**Reports:** ERP AI Chats by User · Abuse Summary · Pending Actions · Skill Usage · Memory Overview · Enhancements by Gap.
+
+System Manager only can read Enhancement rows. A normal chat user cannot.
 
 ---
 
@@ -122,6 +128,10 @@ erpnext_ai_assistant/
     ├── public/js|css/             # panel + CRM include
     ├── services/
     │   ├── run_chat.py            # orchestrator
+    │   ├── intent.py              # DocType, app, action, confidence
+    │   ├── persona.py             # roles, then route, then app
+    │   ├── desk_link.py           # same-site /desk/ open button
+    │   ├── enhancement.py         # unfinished-turn backlog
     │   ├── schema.py              # DocType contract for writes
     │   ├── writes.py              # payload hash + summary
     │   ├── apps.py                # installed app routes
@@ -144,7 +154,9 @@ erpnext_ai_assistant/
 
 ## Install
 
-Requires **Frappe v16** and a site with ERPNext (CRM/HRMS optional).
+Requires **Frappe v16**. ERPNext, HRMS, and CRM are optional. A Frappe-only site still answers ToDo, Event, and Note questions.
+
+Install inserts missing settings, the Frappe helper persona, and the Frappe core skill. It does not overwrite a value you already saved, including a call cap of 0. Optional ERPNext, CRM, HR, stock, and finance seeds are added only when that app or DocType is installed. Set the API key after install. The key is never written by the seed.
 
 ```bash
 cd /path/to/frappe-bench
@@ -221,7 +233,7 @@ The composer accepts images, CSV, XLSX, PDF, and plain text (5 MB). Files are st
 - **Images** are sent to the model as image input so it can read them. They are not written into ERP documents.
 - **CSV / XLSX** are compared with Frappe Data Import templates. A template is the target DocType's importable columns (field names and labels, including child-table columns). The reply ranks the closest DocTypes and lists mapped columns, required fields that are missing, and file columns that do not match a field.
 - **Blank template.** Each suggestion can download a one-row CSV header for that DocType. That is the same column list you would start from in Desk → Data Import → Download Template, without sample records.
-- **No automatic import.** Matching a file does not insert rows. Create and start a Data Import in Desk when the review looks right. Other writes still go through Pending Action and approval.
+- **No automatic import.** Matching a file does not insert rows. Ask the assistant to open the import tool and it returns a button to `/desk/data-import` when you can read Data Import. Other writes still go through Pending Action and approval.
 
 ## Security model
 
@@ -232,6 +244,7 @@ The composer accepts images, CSV, XLSX, PDF, and plain text (5 MB). Files are st
 - Writes require a checkbox and acknowledgment text. The payload is hashed and cannot be edited before `approve_action`. Approval runs once.
 - Uploaded files are private to the signed-in user. A spreadsheet match does not insert rows.
 - API keys must live in Password / `site_config` / env — **never** in this repository.
+- Enhancement excerpts are System Manager only and are not copied into the knowledge index.
 
 ---
 
