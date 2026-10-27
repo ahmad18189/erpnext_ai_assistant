@@ -37,7 +37,8 @@ The chat panel is the only thing on screen here. Type a question in English, the
 
 ## What the chat does now
 
-- Counts and lists the records your role can already read, in Arabic or English.
+- Answers work questions about this site. A question in Arabic gets an Arabic reply.
+- Counts and lists the records your role can already read.
 - Draws a simple chart from those records and states the numbers in a sentence.
 - Opens a page on the same Desk, such as Data Import.
 - Prepares a new or updated record one field at a time, then waits for Approve.
@@ -51,8 +52,8 @@ The aim is a companion for the Frappe site you already run. It should help when 
 
 ## Future enhancements
 
-- Questions the chat cannot finish are stored for a later release. A system manager reviews them and accepts the ones that should ship. The chat leaves the missing action for that release.
-- Later releases add the jobs people keep asking for: more of the DocTypes already on the site, a clearer choice when a question could belong to more than one app, and steps the current tools cannot finish yet.
+- A question the chat cannot finish is stored on ERP AI Enhancement. A system manager reviews it and can accept it for a later release. The chat does not invent the missing action.
+- Accepted gaps are the source for later work: more of the DocTypes already on the site, a clearer choice when a question could belong to more than one app, and steps the current tools cannot finish yet.
 - The same limits stay in place. Reads follow your permissions. Creates, updates, and imports wait for Approve.
 
 ## Support
@@ -111,15 +112,17 @@ Permissions and Frappe roles always win. Guests cannot chat.
 │  api/chat.py  →  services/run_chat.py                       │
 │                                                             │
 │  1. Guest reject                                            │
-│  2. Blocked User check                                      │
-│  3. Ensure ERP AI Chat + Message                            │
-│  4. Abuse scan          → contains_abuse on every response  │
-│  5. Work-scope gate     (deterministic, no LLM)             │
-│  6. Memory + persona (roles, route, inferred app)          │
-│  7. Desk link, or count / list / create when the match     │
-│     is clear. Otherwise the tool loop                      │
-│  8. Detectors only when the model is off                    │
-│  9. Save the reply. Record an Enhancement row if the       │
+│  2. Enabled gate        (Settings can turn the chat off)    │
+│  3. Blocked User check                                      │
+│  4. Ensure ERP AI Chat + Message                            │
+│  5. Abuse scan          → contains_abuse on every response  │
+│  6. Work-scope gate     (deterministic, no LLM)             │
+│  7. Fixed "what can you do" list, before any model call     │
+│  8. Memory + persona (roles, route, inferred app)          │
+│  9. Desk link, chart, or count / list / create when the    │
+│     match is clear. Otherwise the tool loop                │
+│ 10. Detectors only when the model is off                    │
+│ 11. Save the reply. Record an Enhancement row if the       │
 │     turn could not be finished                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -153,7 +156,7 @@ System Manager only can read Enhancement rows. A normal chat user cannot.
 
 ## Tool registry
 
-All tools run as the **logged-in session user**.
+All tools run as the **logged-in session user**. The model may call only `describe_doctype`, `query_records`, `count_records`, `list_doctypes`, `list_installed_apps`, `lookup_field`, `search_knowledge`, `search_manual` (when ERPNext is installed), and `propose_write`. The server checks permission and schema before any of those run. Knowledge search is keyword search with a role check. There is no embedding index.
 
 ### Read
 
@@ -339,5 +342,3 @@ bench --site your.site run-tests --app erpnext_ai_assistant
 ## License
 
 MIT — see [`license.txt`](license.txt).
-
-License: MIT. See `license.txt`.
