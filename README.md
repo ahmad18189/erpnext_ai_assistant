@@ -23,7 +23,7 @@ It is not a public chatbot. Guests cannot use it. A staff member only sees the r
 
 The chat panel is the only thing on screen here. Type a question in English, then send it. The assistant answers from the records your login can already see.
 
-![English assistant panel with a question ready to send](docs/images/assistant-ask-en.png)
+<img src="docs/images/assistant-ask-en.png" alt="English assistant panel with a question ready to send" width="280">
 
 *Ask in English. The panel stays on your site.*
 
@@ -34,6 +34,26 @@ The chat panel is the only thing on screen here. Type a question in English, the
 | Open the import tool / افتح أداة الاستيراد | A button that stays on your site and opens Data Import. |
 | Create a task for tomorrow | A draft. You review it and press Approve. Nothing is saved before that. |
 | What can you do? / ماذا تستطيع | A short list of these same jobs. |
+
+## What the chat does now
+
+- Counts and lists the records your role can already read, in Arabic or English.
+- Draws a simple chart from those records and states the numbers in a sentence.
+- Opens a page on the same Desk, such as Data Import.
+- Prepares a new or updated record one field at a time, then waits for Approve.
+- Checks a spreadsheet and starts the import only after you approve.
+- Answers how-to questions from the ERPNext manual when ERPNext is installed.
+- Saves a fact about you only after you confirm it.
+
+## The aim
+
+The aim is a companion for the Frappe site you already run. It should help when the site has only Frappe, and when ERPNext, HR, CRM, or your own apps are installed. A staff member asks in the Desk they already use, in Arabic or English, and only reaches the records their role allows.
+
+## Future enhancements
+
+- Questions the chat cannot finish are stored for a later release. A system manager reviews them and accepts the ones that should ship. The chat leaves the missing action for that release.
+- Later releases add the jobs people keep asking for: more of the DocTypes already on the site, a clearer choice when a question could belong to more than one app, and steps the current tools cannot finish yet.
+- The same limits stay in place. Reads follow your permissions. Creates, updates, and imports wait for Approve.
 
 ## Support
 
