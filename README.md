@@ -2,29 +2,53 @@
 
 [![Frappe](https://img.shields.io/badge/Frappe-v16-0089FF)](https://frappeframework.com)
 [![ERPNext](https://img.shields.io/badge/ERPNext-optional-2E7D32)](https://erpnext.com)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org)
-[![Arabic](https://img.shields.io/badge/Arabic-first%20RTL-0F766E)](#what-it-does)
+[![Arabic](https://img.shields.io/badge/Arabic-and%20English-0F766E)](#what-you-can-ask)
 [![License: MIT](https://img.shields.io/badge/License-MIT-111827)](license.txt)
+[![Support](https://img.shields.io/badge/Support-ahmad18189%40gmail.com-111827)](mailto:ahmad18189@gmail.com)
 
-Workplace assistant for any **Frappe** site. ERPNext, HRMS, CRM, and custom apps are optional.  
-It ships as a Frappe app (`erpnext_ai_assistant`) with an Arabic-first RTL chat panel, session-scoped tools, a translated DocType label index, abuse moderation, and a Pending Action flow for writes.
+**An Arabic and English chat assistant for Frappe and ERPNext.**  
+Ask how many customers you have, open the import screen, or prepare a new record. It only uses data your login can already see, and it does not save anything until you press Approve.
 
-`#frappe` `#erpnext` `#hrms` `#crm` `#arabic` `#rtl` `#openai` `#data-import` `#desk`
+Made by **Ahmed Abdelrahman**. Support: [ahmad18189@gmail.com](mailto:ahmad18189@gmail.com).
 
-> **Product name:** The ERPNext-AI-Assistant  
-> **Default header:** ERP Assistant / مساعد أعمالك (editable in Settings)  
-> **Module:** `ERP AI Assistant`
+`#frappe` `#erpnext` `#arabic` `#ai-assistant` `#hrms` `#crm` `#data-import` `#rtl` `#openai` `#desk`
 
-## Cards
+## About this app
 
-| | |
+The ERPNext-AI-Assistant is a Frappe app you install on your own site. It adds a small chat panel on Desk. It works if the site has only Frappe, and it also works when ERPNext, HR, CRM, or your own apps are installed. You talk in Arabic or English. The assistant answers from your records, draws a simple chart, and can open a page inside Desk, such as Data Import.
+
+It is not a public chatbot. Guests cannot use it. A staff member only sees the records their role already allows.
+
+## What you can ask
+
+| You say | What happens |
 |---|---|
-| **Count and list** | Ask in Arabic or English. The number comes from `count_records`, limited to rows you can read. |
-| **Open Desk** | "افتح أداة الاستيراد" returns a button on this site. The path is never taken from the model. |
-| **Approve writes** | One missing field at a time. Nothing is saved until you check the box and approve. |
-| **Data Import** | Upload a spreadsheet. Headers can be renamed. Import starts only after you approve, then the reply quotes Frappe's status. |
-| **Personas** | Roles first, then the route, then the app the message is about. A blank default is Frappe helper. |
-| **Cheat sheet** | The empty chat lists what the assistant can do. "ماذا تستطيع" returns that same list. |
+| How many customers? / كم عدد العملاء | A count of the records you are allowed to see. |
+| Show a chart of leads by status | A chart from those records, plus the numbers in a sentence. |
+| Open the import tool / افتح أداة الاستيراد | A button that stays on your site and opens Data Import. |
+| Create a task for tomorrow | A draft. You review it and press Approve. Nothing is saved before that. |
+| What can you do? / ماذا تستطيع | A short list of these same jobs. |
+
+## Support
+
+**Ahmed Abdelrahman**  
+Email: [ahmad18189@gmail.com](mailto:ahmad18189@gmail.com)
+
+Write with your Frappe version, the question you asked, and what the assistant replied. Do not send your API key.
+
+## Questions people ask
+
+**Does it work without ERPNext?**  
+Yes. On a Frappe-only site it can still help with tasks, events, and notes.
+
+**Will it change my data by itself?**  
+No. Creates, updates, and imports wait for your approval.
+
+**Which languages does it speak?**  
+Arabic and English. The panel can switch with one button.
+
+**Who is it for?**  
+Companies that already use Frappe or ERPNext and want staff to ask questions in the same Desk they already use.
 
 ---
 

@@ -1,9 +1,9 @@
 [project]
 name = "erpnext_ai_assistant"
 authors = [
-    { name = "ERPNext AI Assistant" }
+    { name = "Ahmed Abdelrahman", email = "ahmad18189@gmail.com" }
 ]
-description = "The ERPNext-AI-Assistant — workplace ERP/CRM panel for Frappe."
+description = "Arabic and English chat assistant for Frappe and ERPNext. Ask questions, see charts, and approve changes inside Desk."
 requires-python = ">=3.10"
 readme = "README.md"
 license = "MIT"
