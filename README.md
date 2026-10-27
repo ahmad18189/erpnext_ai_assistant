@@ -60,9 +60,11 @@ The next releases follow the questions teams already ask:
 - Charts, lists, and imports for more of the everyday jobs, still with the numbers written in a sentence you can check.
 - The same promise on every new job: you see it, then you approve it, then it is saved.
 
-## How it compares
+## The open-source assistants beside this one
 
-These are other ways teams add a chat to Frappe or ERPNext. Details come from each project's public page in 2026.
+Thank you to the people building chat for Frappe and ERPNext in the open. [ChangAI](https://github.com/ERPGulf/changai), [Frappe Assistant Core](https://github.com/buildswithpaul/Frappe_Assistant_Core), [Frappe AI](https://github.com/vyogotech/frappe_ai), and [LazyChat](https://github.com/soumyasethy/lazychat-erpnext) are real projects, with real maintainers, and this app is glad they exist. Try them. File an issue. Translate a screen. Send a pull request to the one you use. A fix in any of these projects makes the whole community better.
+
+The table is a way to choose, from each project's public page in 2026. Install the one that matches the site you have, use it on real work, and tell that project what should come next.
 
 | | This app | [ChangAI](https://github.com/ERPGulf/changai) | [Frappe Assistant Core](https://github.com/buildswithpaul/Frappe_Assistant_Core) | [Frappe AI](https://github.com/vyogotech/frappe_ai) | [LazyChat](https://github.com/soumyasethy/lazychat-erpnext) |
 |---|---|---|---|---|---|
@@ -73,7 +75,15 @@ These are other ways teams add a chat to Frappe or ERPNext. Details come from ea
 | Saving records | You press Approve | Questions first. Actions are still growing | The cloud chat shows the change and waits | Depends on the agent you connect | You apply each change |
 | License | MIT | MIT | AGPL-3.0 for the open core | MIT | MIT |
 
-Pick this app when the chat should live on your site, in Arabic and English, including a Frappe site that has not installed ERPNext.
+A good fit looks like this:
+
+- **This app** when you want Arabic and English on your own Desk, including a Frappe site that has not installed ERPNext, and you want to press Approve before a record is saved.
+- **ChangAI** when you want plain-language questions on ERPNext, including Arabic, with Gemini or a server you run.
+- **Frappe Assistant Core** when your team already works in Claude, ChatGPT, or Cursor and wants the site connected there. Their in-Desk chat is a separate cloud plan.
+- **Frappe AI** when you want a Desk sidebar and you are ready to host the agent yourself.
+- **LazyChat** when you want an ERPNext chat on your own model and you want to apply each change yourself.
+
+Use one this week. If it is the right home for a bug or an idea, contribute it there. If a later week needs a different shape, try the next project and contribute there too.
 
 ## Questions people ask
 
