@@ -21,6 +21,12 @@ It is not a public chatbot. Guests cannot use it. A staff member only sees the r
 
 ## What you can ask
 
+The chat panel is the only thing on screen here. Type a question in English, then send it. The assistant answers from the records your login can already see.
+
+![English assistant panel with a question ready to send](docs/images/assistant-ask-en.png)
+
+*Ask in English. The panel stays on your site.*
+
 | You say | What happens |
 |---|---|
 | How many customers? / كم عدد العملاء | A count of the records you are allowed to see. |
