@@ -259,6 +259,7 @@ def run_chat(
 			answer_from_tools = targeted.get("answer") or ""
 			pending = targeted.get("pending")
 			gap_signals.extend(targeted.get("signals") or [])
+			download_files.extend(targeted.get("files") or [])
 	if answer_from_tools is None and pending is None and settings.enabled and llm.get_openai_api_key(settings):
 		from erpnext_ai_assistant.services.tools.agent import run_tool_loop
 
