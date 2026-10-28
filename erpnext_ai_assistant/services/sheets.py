@@ -224,6 +224,17 @@ def _save_xlsx(filename: str, header: list[str], matrix: list[list[str]], lang: 
 	return _store(filename, buffer.getvalue(), "Excel" if lang != "ar" else "فتح Excel")
 
 
+def file_markers(files: list | None) -> str:
+	"""Markers the chat renders as download buttons. Only private files."""
+	lines = []
+	for item in files or []:
+		url = str((item or {}).get("url") or "")
+		label = str((item or {}).get("label") or "File").replace("|", " ").replace("]", "")
+		if url.startswith("/private/files/") and "[[" not in url:
+			lines.append(f"[[file:{url}|{label}]]")
+	return "\n".join(lines)
+
+
 def _store(filename: str, content: bytes, label: str) -> dict | None:
 	from frappe.utils.file_manager import save_file
 

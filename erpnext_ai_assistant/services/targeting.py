@@ -50,7 +50,24 @@ _SYNONYMS = {
 	"leads": "CRM Lead",
 }
 _CREATE_WORDS = ("اعمل", "انشئ", "انشاء", "اضف", "اضيف", "سوي", "سو", "عمل", "create", "add", "make")
-_QUERY_WORDS = ("افتح", "اعرض", "قائمه", "ابحث", "list", "show", "open", "find", "صدر", "تصدير", "اصدر", "export")
+_QUERY_WORDS = (
+	"افتح",
+	"اعرض",
+	"قائمه",
+	"ابحث",
+	"list",
+	"show",
+	"open",
+	"find",
+	"صدر",
+	"تصدير",
+	"اصدر",
+	"export",
+	"excel",
+	"xlsx",
+	"csv",
+	"اكسل",
+)
 _DETAIL_WORDS = (
 	"جدول",
 	"تفاصيل",
