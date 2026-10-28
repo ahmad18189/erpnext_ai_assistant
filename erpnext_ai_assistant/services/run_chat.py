@@ -261,6 +261,7 @@ def run_chat(
 			pending = targeted.get("pending")
 			gap_signals.extend(targeted.get("signals") or [])
 			download_files.extend(targeted.get("files") or [])
+			charts.extend(targeted.get("charts") or [])
 	if answer_from_tools is None and pending is None and settings.enabled and llm.get_openai_api_key(settings):
 		from erpnext_ai_assistant.services.tools.agent import run_tool_loop
 
@@ -528,10 +529,9 @@ def run_chat(
 
 def _export_followup(message: str) -> bool:
 	"""True when this turn only asks for a file and does not name a DocType."""
-	from erpnext_ai_assistant.services.sheets import sheet_kinds
-	from erpnext_ai_assistant.services.targeting import match_doctype
+	from erpnext_ai_assistant.services.present import is_format_followup
 
-	return bool(sheet_kinds(message)) and not match_doctype(message)
+	return is_format_followup(message)
 
 
 def _export_turn_text(message: str, prior_facts: dict | None) -> str:

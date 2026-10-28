@@ -488,20 +488,44 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 		}
 	step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"query {doctype}", detail_ar=f"استعلام {doctype}")
 	step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "running")
-	answer = summarize_doctype(doctype, user, lang)
-	files = []
-	from erpnext_ai_assistant.services.sheets import build_export, sheet_kinds, wants_children
+	from erpnext_ai_assistant.services.present import chart_for, chart_marker, image_file, output_formats, table_markdown
+	from erpnext_ai_assistant.services.sheets import build_export
 
-	if sheet_kinds(user) or wants_children(user):
+	formats = output_formats(user)
+	full = summarize_doctype(doctype, user, lang)
+	intro = (full or "").split("\n", 1)[0]
+	answer = full if "text" in formats else intro
+	charts = []
+	if "table" in formats:
+		table = table_markdown(doctype, user, lang)
+		if table:
+			answer = (answer or intro) + "\n\n" + table
+	if "chart" in formats or "image" in formats:
+		chart = chart_for(doctype, user, lang)
+		if chart and "chart" in formats:
+			charts.append(chart)
+			answer = (answer or intro) + "\n" + chart_marker(chart)
+		if chart and "image" in formats:
+			picture = image_file(chart, lang)
+			if picture:
+				files_ready = [picture]
+			else:
+				files_ready = []
+		else:
+			files_ready = []
+	else:
+		files_ready = []
+	if "csv" in formats or "xlsx" in formats:
 		exported = build_export(doctype, user, lang)
 		if exported.get("note"):
-			answer = answer + "\n" + exported["note"]
-		files = exported.get("files") or []
+			answer = (answer or "") + "\n" + exported["note"]
+		files_ready.extend(exported.get("files") or [])
 	step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "done", detail=doctype, detail_ar=doctype)
 	return {
 		"answer": answer,
 		"pending": None,
-		"files": files,
+		"files": [item for item in files_ready if item],
+		"charts": charts,
 		"signals": [{"kind": "had_data", "action": "query_records", "doctype": doctype}],
 	}
 
@@ -644,7 +668,8 @@ def run_tool_loop(
 		"Exclude a status with not in before the count. Exclude leave days before an attendance total. "
 		"If the tool returns a permission error, say so and stop. Do not write SQL. "
 		"Leave passwords, tokens, bank accounts, IBAN, national IDs, and salary lines out of the answer. "
-		"Never say a file is ready for download. A file link is inserted only when the export tool returns a private file. "
+		"A register can be shown as text, a table, a chart, CSV, Excel, or an image. "
+		"Never say a file is ready unless the answer contains a private-file link. "
 		+ manual_rule
 		+ "Use describe_doctype for the DocType the user named. "
 		"propose_write does not save. If fields are missing, ask for the next_ask label and stop. "

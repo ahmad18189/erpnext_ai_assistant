@@ -757,6 +757,13 @@
         i += 1;
         continue;
       }
+      if (isTableRow(line) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        flushPara();
+        var table = readTable(lines, i);
+        out.push(table.html);
+        i = table.i;
+        continue;
+      }
       var kind = listKind(line);
       if (kind) {
         flushPara();
@@ -772,6 +779,68 @@
     return out.join("");
   }
 
+  function isTableRow(line) {
+    return /^\s*\|.+\|\s*$/.test(String(line || ""));
+  }
+
+  function isTableSep(line) {
+    return /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/.test(String(line || ""));
+  }
+
+  function splitRow(line) {
+    return String(line || "")
+      .replace(/^\s*\|/, "")
+      .replace(/\|\s*$/, "")
+      .split("|")
+      .map(function (cell) {
+        return cell.trim();
+      });
+  }
+
+  function readTable(lines, i) {
+    var header = splitRow(lines[i]);
+    i += 2;
+    var body = [];
+    while (i < lines.length && isTableRow(lines[i]) && !isTableSep(lines[i])) {
+      body.push(splitRow(lines[i]));
+      i += 1;
+    }
+    var html = "<table><thead><tr>";
+    header.forEach(function (cell) {
+      html += "<th>" + inlineMd(escapeHtml(cell)) + "</th>";
+    });
+    html += "</tr></thead><tbody>";
+    body.forEach(function (row) {
+      html += "<tr>";
+      header.forEach(function (_cell, index) {
+        html += "<td>" + inlineMd(escapeHtml(row[index] || "")) + "</td>";
+      });
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    return { html: html, i: i };
+  }
+
+  function parseChartMarkers(content) {
+    var charts = [];
+    var text = String(content || "").replace(
+      /\[\[chart:(bar|pie|line|kpi)\|([^|\]]+)\|([^\]]*)\]\]/g,
+      function (_m, type, title, body) {
+        var labels = [];
+        var values = [];
+        String(body || "").split(";").forEach(function (part) {
+          var at = part.lastIndexOf("=");
+          if (at < 1) return;
+          labels.push(part.slice(0, at));
+          values.push(parseFloat(part.slice(at + 1)) || 0);
+        });
+        charts.push({ type: type, title: title, labels: labels, values: values });
+        return "";
+      }
+    );
+    return { text: text, charts: charts };
+  }
+
   function appendMsg(role, content, extra) {
     var body = document.getElementById("erp-ai-body");
     if (!body) return;
@@ -779,7 +848,8 @@
     if (empty) empty.remove();
     var wrap = el("div", "erp-ai-msg " + role);
     if (extra && extra.thinking) wrap.appendChild(extra.thinking);
-    var filesInText = parseFileLinks(content || "");
+    var chartsInText = parseChartMarkers(content || "");
+    var filesInText = parseFileLinks(chartsInText.text || "");
     var parsed = parseOpenLinks(filesInText.text || "");
     var bubble = el("div", "bubble");
     if (role === "assistant" && !(extra && extra.plain)) {
@@ -796,11 +866,14 @@
     if (extra && extra.link && (content || "").indexOf("[[open:") === -1) {
       wrap.appendChild(openRecordButton(extra.link));
     }
-    if (extra && extra.charts) {
-      extra.charts.forEach(function (c) {
-        wrap.appendChild(renderChart(c));
-      });
-    }
+    var seenCharts = {};
+    chartsInText.charts.concat((extra && extra.charts) || []).forEach(function (c) {
+      if (!c) return;
+      var key = (c.title || "") + "|" + (c.type || "");
+      if (seenCharts[key]) return;
+      seenCharts[key] = 1;
+      wrap.appendChild(renderChart(c));
+    });
     appendFileButtons(wrap, filesInText.files.concat((extra && extra.files) || []));
     if (extra && extra.ack) wrap.appendChild(renderAck(extra.ack));
     body.appendChild(wrap);

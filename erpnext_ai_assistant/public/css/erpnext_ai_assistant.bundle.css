@@ -202,6 +202,25 @@
   white-space: normal;
 }
 
+.erp-ai-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.4rem 0;
+  font-size: 0.8rem;
+}
+
+.erp-ai-md th,
+.erp-ai-md td {
+  border: 1px solid #e2e8f0;
+  padding: 0.3rem 0.4rem;
+  text-align: start;
+  vertical-align: top;
+}
+
+.erp-ai-md th {
+  background: #f8fafc;
+}
+
 .erp-ai-md p,
 .erp-ai-md ul,
 .erp-ai-md ol,
