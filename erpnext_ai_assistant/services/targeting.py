@@ -22,14 +22,20 @@ _PHRASES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 	(("عميل محتمل", "عملاء محتملين", "العملاء المحتملين", "crm lead"), ("CRM Lead", "Lead")),
 	(("فاتوره مبيعات", "فواتير المبيعات", "فواتير مبيعات", "sales invoice"), ("Sales Invoice",)),
 	(("فاتوره مشتريات", "فواتير المشتريات", "فواتير مشتريات", "purchase invoice"), ("Purchase Invoice",)),
-	(("امر بيع", "sales order"), ("Sales Order",)),
-	(("امر شراء", "purchase order"), ("Purchase Order",)),
+	(("اوامر البيع", "اوامر بيع", "امر البيع", "امر بيع", "sales order"), ("Sales Order",)),
+	(("اوامر الشراء", "اوامر شراء", "امر الشراء", "امر شراء", "purchase order"), ("Purchase Order",)),
+	(("عروض الاسعار", "عروض اسعار", "عرض السعر", "عرض سعر", "quotation"), ("Quotation",)),
+	(("سندات القبض", "سند قبض", "الدفعات", "دفعات", "payment entry", "payment entries", "payments"), ("Payment Entry",)),
+	(("اذونات التسليم", "اذن تسليم", "delivery note"), ("Delivery Note",)),
+	(("مشاريع", "مشروع", "project"), ("Project",)),
 	(("موظف", "employee"), ("Employee",)),
 	(("مورد", "supplier"), ("Supplier",)),
 	(("صنف", "item"), ("Item",)),
 	(("اجتماع", "اجتماعات", "meeting", "meetings"), ("Event",)),
 	(("عميل", "عملاء", "customer", "customers"), ("Customer",)),
 	(("ليد", "lead", "leads"), ("CRM Lead", "Lead")),
+	# A bare "invoices" is a sales invoice; "فواتير المشتريات" above still wins on length.
+	(("الفواتير", "فواتير", "فاتوره", "invoices", "invoice"), ("Sales Invoice",)),
 )
 
 _TASK_WORDS = ("مهمه", "مهام", "todo", "todos", "to-do", "to do", "task", "tasks")
@@ -132,12 +138,50 @@ _LIST_FIELDS = {
 }
 
 
+# "invoices by customer" names the invoices; customer is how to group them.
+_GROUPING = re.compile(r"\b(?:grouped\s+by|by|per|for\s+each)\s+[\w\-]+(?:\s+[\w\-]+)?|(?:بحسب|حسب|لكل)\s+\S+", re.I | re.UNICODE)
+
+
+def without_grouping(text: str | None) -> str:
+	return _GROUPING.sub(" ", text or "")
+
+
+# "a quotation for Al-Ofuq company": the words after "for" describe the party, not the DocType.
+_PARTY = re.compile(r"\b(?:for|to|from|with)\b|(?<!\w)(?:لشركة|لشركه|للشركة|للشركه|لعميل|للعميل|لمؤسسة|لمؤسسه|لمورد|للمورد|من\s+شركة|من\s+شركه)(?!\w)", re.I | re.UNICODE)
+
+
+def doctype_text(text: str | None) -> str:
+	"""The part of the message that names the DocType: no "by X", and nothing after "for/to"."""
+	head = without_grouping(text)
+	cut = _PARTY.split(head, 1)[0]
+	return cut if cut.strip() else head
+
+
+def grouping_words(text: str | None) -> list[str]:
+	"""The words after "by"/"حسب" ("by customer" -> ["customer"])."""
+	found = []
+	for match in _GROUPING.finditer(text or ""):
+		words = re.split(r"\s+", match.group(0).strip())
+		found.extend(word for word in words[1:] if word.lower() not in ("by", "each"))
+	return found
+
+
 def match_doctype(text: str | None) -> str | None:
 	"""The DocType the user named. Returns None when the match is not clear.
 
 	The catalog and translated labels are the primary match. Phrase lists only
 	raise the score of a known DocType; they never invent one.
 	"""
+	whole = without_grouping(text)
+	head = doctype_text(text)
+	if head != whole:
+		found = _match_doctype_in(head)
+		if found:
+			return found
+	return _match_doctype_in(whole)
+
+
+def _match_doctype_in(text: str) -> str | None:
 	norm = normalize_arabic(text)
 	if not norm:
 		return None
@@ -303,6 +347,10 @@ def needs_live_check(text: str | None) -> bool:
 	norm = normalize_arabic(text)
 	if not norm:
 		return False
+	# "أنشئ عرض سعر لعدد 3 كراسي": a create states quantities, not a counted number.
+	head = " ".join(norm.split()[:3])
+	if any(_has(head, word) for word in _CREATE_WORDS):
+		return False
 	if any(_has(norm, word) for word in _COUNT_WORDS):
 		return True
 	if any(_has(norm, word) for word in _QUERY_WORDS):
@@ -345,9 +393,10 @@ def _action(text: str) -> str | None:
 
 
 def format_count(doctype: str, total: int, lang: str) -> str:
+	label = _tr(doctype, lang) or doctype
 	if lang == "ar":
-		return f"عدد سجلات {doctype} الظاهرة لك: {total}."
-	return f"You can see {total} {doctype} records."
+		return f"عدد سجلات {label} الظاهرة لك: {total}."
+	return f"You can see {total} {label} records."
 
 
 # Frappe list pages are limit_start + limit_page_length. Totals use count/sum, not the page.
@@ -468,8 +517,19 @@ def filtered_count(doctype: str, text: str | None, lang: str):
 		return 0, "", f"You cannot read {_tr(doctype, lang)}."
 
 
+def _agg(function: str, field: str, alias: str):
+	"""One aggregate column for get_list.
+
+	Frappe 16 refuses SQL functions written as strings and takes {"COUNT": "*", "as": "total"}.
+	Frappe 15 only understands the string form, so the version-15 branch keeps working.
+	"""
+	if int(frappe.__version__.split(".")[0]) >= 16:
+		return {function.upper(): field, "as": alias}
+	return f"{function.lower()}({'name' if field == '*' else field}) as {alias}"
+
+
 def _sql_total(doctype: str, filters: list) -> int:
-	rows = frappe.get_list(doctype, fields=["count(name) as total"], filters=filters, limit_page_length=0)
+	rows = frappe.get_list(doctype, fields=[_agg("count", "*", "total")], filters=filters, limit_page_length=0)
 	if not rows:
 		return 0
 	return int(rows[0].get("total") or 0)
@@ -478,7 +538,7 @@ def _sql_total(doctype: str, filters: list) -> int:
 def _sql_bounds(doctype: str, date_field: str, filters: list):
 	rows = frappe.get_list(
 		doctype,
-		fields=[f"min({date_field}) as first_on", f"max({date_field}) as last_on"],
+		fields=[_agg("min", date_field, "first_on"), _agg("max", date_field, "last_on")],
 		filters=filters,
 		limit_page_length=0,
 	)
@@ -496,9 +556,9 @@ def _sql_groups(doctype: str, meta, plan: dict, filters: list) -> list:
 			group_cols.append(field)
 	if not group_cols:
 		return []
-	columns.append("count(name) as total")
+	columns.append(_agg("count", "*", "total"))
 	if plan.get("amount") and meta.has_field(plan["amount"]):
-		columns.append(f"sum({plan['amount']}) as amount")
+		columns.append(_agg("sum", plan["amount"], "amount"))
 	order = group_cols[1] if plan.get("group_name") in group_cols else group_cols[0]
 	return frappe.get_list(
 		doctype,
@@ -539,9 +599,58 @@ def _query_filters(doctype: str, plan: dict, text: str | None, lang: str):
 	if covered_problem:
 		return filters, "", covered_problem, False
 	filters.extend(covered)
-	notes = [part for part in (note, exclude_note, covered_note) if part]
+	state_filters, state_note = state_filters_for(doctype, text, lang)
+	filters.extend(state_filters)
+	notes = [part for part in (state_note, note, exclude_note, covered_note) if part]
 	joiner = "، " if lang == "ar" else ", "
 	return filters + extra, joiner.join(notes), "", False
+
+
+# (words, docstatus, status option, English note, Arabic note). Longer phrases first: "غير مدفوعه" before "مدفوعه".
+_STATE_WORDS = (
+	(("not paid", "unpaid", "غير مدفوعه", "غير مدفوع", "غير المدفوعه"), None, "Unpaid", "unpaid", "غير مدفوعة"),
+	(("partly paid", "مدفوعه جزئيا"), None, "Partly Paid", "partly paid", "مدفوعة جزئيًا"),
+	(("overdue", "late", "متاخره", "متاخر", "متاخرات", "المتاخره"), None, "Overdue", "overdue", "متأخرة"),
+	(("paid", "مدفوعه", "مدفوع", "المدفوعه"), None, "Paid", "paid", "مدفوعة"),
+	(("completed", "done", "finished", "مكتمله", "مكتمل", "منجزه", "منجز"), None, "Completed", "completed", "مكتملة"),
+	(("pending review", "قيد المراجعه"), None, "Pending Review", "pending review", "قيد المراجعة"),
+	(("closed", "مغلقه", "مغلق"), None, "Closed", "closed", "مغلقة"),
+	(("submitted", "approved", "confirmed", "معتمده", "معتمد", "المعتمده", "مرحله", "مرحل"), 1, None, "submitted", "معتمدة"),
+	(("drafts", "draft", "مسودات", "مسوده"), 0, None, "draft", "مسودة"),
+	(("cancelled", "canceled", "ملغاه", "ملغيه", "ملغي", "الملغاه"), 2, None, "cancelled", "ملغاة"),
+	(("open", "مفتوحه", "مفتوح", "المفتوحه"), None, "Open", "open", "مفتوحة"),
+)
+
+
+def state_filters_for(doctype: str, text: str | None, lang: str) -> tuple[list, str]:
+	"""Turn "submitted", "overdue", "مسودة" into docstatus/status filters this DocType supports."""
+	norm = normalize_arabic(text)
+	if not norm:
+		return [], ""
+	meta = frappe.get_meta(doctype)
+	status_df = meta.get_field("status")
+	options = {line.strip() for line in ((status_df.options if status_df else "") or "").split("\n") if line.strip()}
+	words = norm.split()
+	filters, notes, used = [], [], set()
+	for phrases, docstatus, option, note_en, note_ar in _STATE_WORDS:
+		hit = next((p for p in phrases if _has(norm, p)), None)
+		if not hit or any(hit in other for other in used):
+			continue
+		# "open the quotation list" is a navigation verb, not the Open status.
+		if hit == "open" and words and words[0] == "open":
+			continue
+		if option == "Unpaid" and meta.has_field("outstanding_amount"):
+			# People mean "still owes money": Unpaid, Overdue, and Partly Paid in ERPNext terms.
+			filters += [[doctype, "docstatus", "=", 1], [doctype, "outstanding_amount", ">", 0]]
+		elif docstatus is not None and meta.is_submittable:
+			filters.append([doctype, "docstatus", "=", docstatus])
+		elif option and option in options:
+			filters.append([doctype, "status", "=", option])
+		else:
+			continue
+		used.add(hit)
+		notes.append(note_ar if lang == "ar" else note_en)
+	return filters, ("، " if lang == "ar" else ", ").join(notes)
 
 
 def _select_exclusions(doctype: str, plan: dict, text: str | None, lang: str):

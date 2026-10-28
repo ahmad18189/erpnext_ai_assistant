@@ -6,6 +6,7 @@ Writes never insert business documents here. propose_write only stores a pending
 from __future__ import annotations
 
 import json
+import re
 
 import frappe
 from erpnext_ai_assistant.services.llm import provider as llm
@@ -157,7 +158,14 @@ TOOL_SPECS = [
 		"type": "function",
 		"function": {
 			"name": "propose_write",
-			"description": "Prepare a create, update, or delete. Does not save. If required fields are missing, the result lists them and you must ask the user. Never invent values.",
+			"description": (
+				"Prepare a create, update, delete, submit, or cancel. Does not save; the user approves a card. "
+				"System fields (series, company, currency, price list, exchange rates) are filled automatically: never ask for them. "
+				"Item rows go in values.items as [{\"item_name\" or \"item_code\": ..., \"qty\": ...}]; unit and price come from the Item. "
+				"For update/delete/submit/cancel pass target_name as the record name. If query results show several records that could fit, "
+				"list them and ask which one; never pick one yourself. If required fields are missing, the result lists them and you must ask the user. "
+				"Never invent values."
+			),
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -174,7 +182,10 @@ TOOL_SPECS = [
 
 
 def _compact_schema(doctype: str) -> dict:
+	from erpnext_ai_assistant.services.autofill import fill_header
+
 	full = describe_doctype(doctype)
+	automatic = {row["fieldname"] for row in fill_header(full["fields"], {})}
 	required = [
 		{
 			"fieldname": field["fieldname"],
@@ -183,9 +194,9 @@ def _compact_schema(doctype: str) -> dict:
 			"options": field.get("options") if field["fieldtype"] == "Select" else None,
 		}
 		for field in full["fields"]
-		if field.get("reqd") and not field.get("read_only")
+		if field.get("reqd") and not field.get("read_only") and field["fieldname"] not in automatic
 	][:25]
-	return {"doctype": doctype, "required": required, "children": full["children"][:6]}
+	return {"doctype": doctype, "required": required, "filled_automatically": sorted(automatic), "children": full["children"][:6]}
 
 
 def _propose(args: dict, chat_id: str | None, lang: str) -> dict:
@@ -222,7 +233,7 @@ def _propose(args: dict, chat_id: str | None, lang: str) -> dict:
 	if action == "create":
 		if not chat_id:
 			return {"error": "no chat", "status": "failed"}
-		return tools.propose_write(chat_id, "create", doctype, values)
+		return tools.propose_write(chat_id, "create", doctype, values, lang=lang)
 	if not target:
 		return {
 			"status": "need_input",
@@ -233,7 +244,7 @@ def _propose(args: dict, chat_id: str | None, lang: str) -> dict:
 		}
 	if not chat_id:
 		return {"error": "no chat", "status": "failed"}
-	return tools.propose_write(chat_id, action, doctype, values if action == "update" else {}, target_name=target)
+	return tools.propose_write(chat_id, action, doctype, values if action == "update" else {}, target_name=target, lang=lang)
 
 
 def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: str | None = None) -> dict:
@@ -457,8 +468,11 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 		return None
 	doctype = planned["doctype"]
 	if planned["action"] == "create":
+		from erpnext_ai_assistant.services.autofill import sentence_values
+
 		values = dict(planned.get("values") or {})
 		values.update(extract_field_values(doctype, user) or {})
+		values.update(sentence_values(doctype, user))
 		step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"create {doctype}", detail_ar=f"إنشاء {doctype}")
 		step("tool-1", "تجهيز طلب", "Prepare request", "propose_write", "running")
 		result = dispatch(
@@ -555,6 +569,10 @@ def _error_signal(name: str, doctype: str, result: dict) -> list:
 
 def _note_signal(signals: list, name: str, args: dict, result: dict) -> None:
 	err = str(result.get("error") or "")
+	if err and name in ("count_records", "query_records") and _permission_error(err):
+		# No "action" key: a permission answer is complete, not a gap for ERP AI Enhancement.
+		signals.append({"kind": "no_access", "doctype": result.get("doctype") or args.get("doctype") or ""})
+		return
 	if err.startswith("Unknown tool "):
 		signals.append({"kind": "unknown_capability", "action": name, "doctype": "", "app": ""})
 		return
@@ -582,6 +600,7 @@ def _note_signal(signals: list, name: str, args: dict, result: dict) -> None:
 					"action": name,
 					"doctype": result.get("doctype") or args.get("doctype") or "",
 					"total": result.get("total"),
+					"filters": args.get("filters") or {},
 					"live": True,
 				}
 			)
@@ -635,7 +654,10 @@ def continue_guided_create(
 	collected = facts.get("collected") or {}
 	if not isinstance(collected, dict):
 		collected = {}
+	from erpnext_ai_assistant.services.autofill import sentence_values
+
 	extracted = extract_field_values(doctype, user) or {}
+	extracted.update(sentence_values(doctype, user))
 	merged = dict(collected)
 	for key, value in extracted.items():
 		if value not in (None, ""):
@@ -660,6 +682,63 @@ def continue_guided_create(
 	return {"answer": "", "pending": result}
 
 
+DRAFT_KEYS = ("pending_intent", "collected", "next_field")
+_DROP_DRAFT = (
+	"cancel", "stop", "never mind", "nevermind", "forget it", "drop it", "no thanks",
+	"الغ", "الغي", "الغاء", "توقف", "خلاص", "انس", "لا شكرا", "بلاش",
+)
+_QUESTION_START = (
+	"what", "what's", "how", "which", "who", "when", "where", "why", "show", "list",
+	"ما", "ماذا", "كم", "كيف", "هل", "اين", "متى", "لماذا", "اعرض", "وش",
+)
+
+
+def leave_draft(user: str, prior_facts: dict | None) -> str | None:
+	"""How this message relates to a create still waiting for fields.
+
+	"cancel": the user dropped it ("cancel", "إلغاء").
+	"aside": the user moved on — a question, or another action or DocType.
+	None: no draft, or the message reads like the value the draft asked for.
+	"""
+	intent = str((prior_facts or {}).get("pending_intent") or "")
+	if not intent.startswith("create:"):
+		return None
+	from erpnext_ai_assistant.services.arabic import normalize_arabic
+	from erpnext_ai_assistant.services.intent import _action_name
+	from erpnext_ai_assistant.services.targeting import _has, match_doctype
+
+	norm = normalize_arabic(user)
+	words = norm.split()
+	if not words:
+		return None
+	named = match_doctype(user)
+	# "cancel invoice ACC-SINV-1" is a record action, not "drop my draft".
+	if len(words) <= 4 and not named and not any(ch.isdigit() for ch in norm):
+		if any(_has(norm, phrase) for phrase in _DROP_DRAFT):
+			return "cancel"
+	if norm.endswith(("?", "؟")) or words[0] in _QUESTION_START:
+		return "aside"
+	action = _action_name(user)
+	if action not in ("unknown", "create"):
+		return "aside"
+	if named and named != intent.split(":", 1)[1].strip() and action == "create":
+		return "aside"
+	return None
+
+
+def draft_note(doctype: str, kind: str, lang: str) -> str:
+	from erpnext_ai_assistant.services.targeting import _tr
+
+	label = _tr(doctype, lang) or doctype
+	if kind == "cancel":
+		if lang == "ar":
+			return f"تمام، ألغيت مسودة {label}. لم يُحفظ شيء."
+		return f"Okay, I dropped the {label} draft. Nothing was saved."
+	if lang == "ar":
+		return f"(تركت مسودة {label} جانبًا ولم يُحفظ منها شيء. اطلب إنشاءها من جديد متى شئت.)"
+	return f"(I set the {label} draft aside. Nothing was saved. Ask to create it again any time.)"
+
+
 def _has_live_evidence(signals: list) -> bool:
 	"""A successful count or query in this turn. A failed call or a knowledge search is not evidence."""
 	return any(row.get("live") and row.get("kind") == "had_data" for row in signals)
@@ -670,8 +749,60 @@ def _finish_with_evidence(content: str, user: str, lang: str, pending, signals: 
 
 	text = content or ""
 	if needs_live_check(user) and not _has_live_evidence(signals):
-		text = NOT_VERIFIED_AR if lang == "ar" else NOT_VERIFIED_EN
+		denied = next((row for row in signals if row.get("kind") == "no_access" and row.get("doctype")), None)
+		if denied:
+			from erpnext_ai_assistant.services.targeting import _tr
+
+			label = _tr(denied["doctype"], lang) or denied["doctype"]
+			text = f"لا تملك صلاحية قراءة {label}." if lang == "ar" else f"You cannot read {label}."
+		else:
+			text = NOT_VERIFIED_AR if lang == "ar" else NOT_VERIFIED_EN
+	elif re.search(r"[0-9\u0660-\u0669]", text):
+		checked = _checked_line(signals, lang)
+		if checked:
+			text = text.rstrip() + "\n\n" + checked
 	return {"answer": text, "pending": pending, "signals": signals}
+
+
+def _checked_line(signals: list, lang: str) -> str:
+	"""What the tools really counted, so a number in the model's wording can be checked against it."""
+	from erpnext_ai_assistant.services.targeting import _tr
+
+	parts = []
+	for row in signals:
+		if row.get("action") != "count_records" or not row.get("live"):
+			continue
+		label = _tr(row.get("doctype") or "", lang) or row.get("doctype") or ""
+		where = _filters_text(row.get("filters"))
+		if lang == "ar":
+			parts.append(f"{row.get('total')} من {label}" + (f" ({where})" if where else ""))
+		else:
+			parts.append(f"{row.get('total')} {label}" + (f" ({where})" if where else ""))
+	if not parts:
+		return ""
+	if lang == "ar":
+		return "تم التحقق: " + "؛ ".join(parts)
+	return "Checked: " + "; ".join(parts)
+
+
+def _filters_text(filters) -> str:
+	if isinstance(filters, str):
+		try:
+			filters = json.loads(filters)
+		except Exception:
+			return ""
+	bits = []
+	if isinstance(filters, dict):
+		for key, value in filters.items():
+			if isinstance(value, (list, tuple)) and len(value) == 2:
+				bits.append(f"{key} {value[0]} {value[1]}")
+			else:
+				bits.append(f"{key} = {value}")
+	elif isinstance(filters, list):
+		for row in filters:
+			if isinstance(row, (list, tuple)) and len(row) >= 3:
+				bits.append(" ".join(str(part) for part in row[-3:]))
+	return ", ".join(bits)[:160]
 
 
 def run_tool_loop(

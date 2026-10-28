@@ -23,6 +23,8 @@
       ackCheck: "راجعت التغيير وأوافق على تنفيذه",
       approve: "موافقة",
       reject: "رفض",
+      rejected: "تم الرفض. لم يُحفظ شيء.",
+      approveFailed: "تعذّر التنفيذ: ",
       workOnly: "يجيب من بيانات العمل المتاحة لك. لا يُنفَّذ أي تعديل قبل موافقتك.",
       attach: "إرفاق ملف أو صورة",
       template: "تنزيل القالب",
@@ -61,6 +63,8 @@
       ackCheck: "I reviewed and authorize this change",
       approve: "Approve",
       reject: "Reject",
+      rejected: "Rejected. Nothing was saved.",
+      approveFailed: "Could not save: ",
       workOnly: "Answers from the business data you can access. Nothing changes until you approve.",
       attach: "Attach a file or image",
       template: "Download template",
@@ -212,7 +216,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai23";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai25";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -1320,7 +1324,7 @@
   function renderAck(pending) {
     var box = el("div", "erp-ai-ack");
     box.appendChild(textNode("strong", "", t("ackTitle")));
-    box.appendChild(textNode("div", "", (pending && pending.summary) || ""));
+    box.appendChild(textNode("div", "erp-ai-ack-summary", (pending && pending.summary) || ""));
     var lab = el("label");
     var cb = document.createElement("input");
     cb.type = "checkbox";
@@ -1330,23 +1334,50 @@
     var row = el("div", "erp-ai-composer-row");
     var ok = el("button", "primary", t("approve"));
     var no = el("button", "", t("reject"));
+    ok.disabled = true;
+    cb.addEventListener("change", function () {
+      ok.disabled = !cb.checked;
+    });
+    // One decision per card: lock both buttons while it runs, and after it lands.
+    function settle(text, done) {
+      ok.disabled = no.disabled = cb.disabled = !!done;
+      if (done) box.classList.add("erp-ai-ack-done");
+      if (text) appendMsg("assistant", text, {});
+    }
     ok.addEventListener("click", function () {
       if (!cb.checked) return;
+      ok.disabled = no.disabled = true;
       call("erpnext_ai_assistant.api.chat.approve_action", {
         pending_action: pending.pending_action,
         acknowledgment_text: t("ackCheck"),
         acknowledged: 1,
-      }).then(function (res) {
-        appendMsg("assistant", (res && res.message) || t("created"), {
-          link: res && res.link,
-          files: (res && res.files) || [],
+      })
+        .then(function (res) {
+          settle("", true);
+          appendMsg("assistant", (res && res.message) || t("created"), {
+            link: res && res.link,
+            files: (res && res.files) || [],
+          });
+        })
+        .catch(function (err) {
+          settle(t("approveFailed") + ((err && err.message) || t("error")), false);
+          ok.disabled = !cb.checked;
+          no.disabled = false;
         });
-      });
     });
     no.addEventListener("click", function () {
+      ok.disabled = no.disabled = true;
       call("erpnext_ai_assistant.api.chat.reject_action", {
         pending_action: pending.pending_action,
-      });
+      })
+        .then(function () {
+          settle(t("rejected"), true);
+        })
+        .catch(function (err) {
+          settle((err && err.message) || t("error"), false);
+          ok.disabled = !cb.checked;
+          no.disabled = false;
+        });
     });
     row.appendChild(no);
     row.appendChild(ok);
@@ -1454,7 +1485,8 @@
           state.persona = res.persona;
           applyPersonaLabel();
         }
-        var bubble = appendMsg("assistant", res.message || "", {
+        var shown = res.pending_action ? String(res.message || "").split("\n\n")[0] : res.message || "";
+        var bubble = appendMsg("assistant", shown, {
           plain: !!res.next_ask,
           thinking: thinkingBlock(state.steps, state.thinkingMs),
           charts: res.charts || [],

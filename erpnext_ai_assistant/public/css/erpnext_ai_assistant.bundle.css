@@ -463,6 +463,21 @@
   font-size: 0.85rem;
 }
 
+.erp-ai-ack-summary {
+  white-space: pre-line;
+  margin-top: 0.35rem;
+  line-height: 1.5;
+}
+
+.erp-ai-ack-done {
+  opacity: 0.65;
+}
+
+.erp-ai-ack button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .erp-ai-ack label {
   display: flex;
   gap: 0.4rem;

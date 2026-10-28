@@ -353,7 +353,7 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 
 		source = Path(frappe.get_app_path("erpnext_ai_assistant", "public", "js", "erpnext_ai_assistant.bundle.js")).read_text()
 		self.assertIn("function safeLocalPath", source)
-		self.assertIn('textNode("div", "", (pending && pending.summary)', source)
+		self.assertIn('textNode("div", "erp-ai-ack-summary", (pending && pending.summary)', source)
 		self.assertNotIn('el("div", "", (pending && pending.summary)', source)
 
 	def test_T17_reports_exist(self):
