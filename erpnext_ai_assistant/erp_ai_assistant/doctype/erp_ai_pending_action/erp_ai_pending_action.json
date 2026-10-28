@@ -41,7 +41,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "pending\napproved\nrejected\nexecuted\nfailed",
+   "options": "pending\napproved\nqueued\nstarting\nrejected\nexecuted\nfailed",
    "default": "pending",
    "in_list_view": 1,
    "in_standard_filter": 1

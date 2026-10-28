@@ -18,10 +18,13 @@ LOCKED_FIELDS = (
 	"chat",
 )
 
-# executed/rejected/failed are terminal. pending may go straight to executed in one save.
+# executed/rejected/failed are terminal. An import moves pending -> queued -> starting -> executed.
+# A failed queue start returns to approved so the same Data Import can be started again.
 TRANSITIONS = {
-	"pending": {"approved", "rejected", "executed", "failed"},
-	"approved": {"executed", "failed"},
+	"pending": {"approved", "queued", "rejected", "executed", "failed"},
+	"queued": {"starting", "approved", "failed"},
+	"starting": {"executed", "approved", "failed"},
+	"approved": {"starting", "executed", "failed"},
 	"executed": set(),
 	"rejected": set(),
 	"failed": set(),

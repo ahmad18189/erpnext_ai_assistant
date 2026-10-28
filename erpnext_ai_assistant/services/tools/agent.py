@@ -551,8 +551,26 @@ def _note_signal(signals: list, name: str, args: dict, result: dict) -> None:
 		if name == "search_manual" or name == "search_knowledge":
 			if result.get("passages"):
 				signals.append({"kind": "had_data", "action": name, "doctype": args.get("doctype") or ""})
-		else:
-			signals.append({"kind": "had_data", "action": name, "doctype": args.get("doctype") or ""})
+		elif name == "count_records" and result.get("total") is not None:
+			signals.append(
+				{
+					"kind": "had_data",
+					"action": name,
+					"doctype": result.get("doctype") or args.get("doctype") or "",
+					"total": result.get("total"),
+					"live": True,
+				}
+			)
+		elif name == "query_records" and result.get("rows") is not None:
+			signals.append(
+				{
+					"kind": "had_data",
+					"action": name,
+					"doctype": result.get("doctype") or args.get("doctype") or "",
+					"rows": result.get("rows") or [],
+					"live": True,
+				}
+			)
 		return
 	if name == "propose_write" and result.get("status") == "failed" and not _permission_error(err):
 		signals.append(
@@ -618,6 +636,20 @@ def continue_guided_create(
 	return {"answer": "", "pending": result}
 
 
+def _has_live_evidence(signals: list) -> bool:
+	"""A successful count or query in this turn. A failed call or a knowledge search is not evidence."""
+	return any(row.get("live") and row.get("kind") == "had_data" for row in signals)
+
+
+def _finish_with_evidence(content: str, user: str, lang: str, pending, signals: list) -> dict:
+	from erpnext_ai_assistant.services.targeting import needs_live_check
+
+	text = content or ""
+	if needs_live_check(user) and not _has_live_evidence(signals):
+		text = NOT_VERIFIED_AR if lang == "ar" else NOT_VERIFIED_EN
+	return {"answer": text, "pending": pending, "signals": signals}
+
+
 def run_tool_loop(
 	system: str,
 	user: str,
@@ -679,15 +711,7 @@ def run_tool_loop(
 			return {"answer": str(exc), "pending": pending, "signals": signals}
 		tool_calls = message.get("tool_calls") or []
 		if not tool_calls:
-			from erpnext_ai_assistant.services.targeting import needs_live_check
-
-			if needs_live_check(user):
-				return {
-					"answer": NOT_VERIFIED_AR if lang == "ar" else NOT_VERIFIED_EN,
-					"pending": pending,
-					"signals": signals,
-				}
-			return {"answer": message.get("content") or "", "pending": pending, "signals": signals}
+			return _finish_with_evidence(message.get("content") or "", user, lang, pending, signals)
 		messages.append(
 			{
 				"role": "assistant",
@@ -728,4 +752,4 @@ def run_tool_loop(
 		final = llm.chat_message(messages, tools=None, chat_id=chat_id, lang=lang)
 	except (llm.CallLimitExceeded, llm.TurnDeadlineExceeded) as exc:
 		return {"answer": str(exc), "pending": pending, "signals": signals}
-	return {"answer": final.get("content") or "", "pending": pending, "signals": signals}
+	return _finish_with_evidence(final.get("content") or "", user, lang, pending, signals)

@@ -172,13 +172,13 @@ def _matrix(meta, parent_fields, child, child_fields, parents, by_parent, lang, 
 		header.extend(_caption(child_meta, field, lang, translations, translate) for field in child_fields)
 	matrix = []
 	for parent in parents:
-		base = [_cell(parent.get(field)) for field in parent_fields]
+		base = [_export_value(parent.get(field)) for field in parent_fields]
 		kids = by_parent.get(parent.get("name")) or [None]
 		for kid in kids:
 			extra = []
 			if child:
-				extra.append("" if not kid else _cell(kid.get("idx")))
-				extra.extend("" if not kid else _cell(kid.get(field)) for field in child_fields)
+				extra.append("" if not kid else _export_value(kid.get("idx")))
+				extra.extend("" if not kid else _export_value(kid.get(field)) for field in child_fields)
 			matrix.append(base + extra)
 	return header, matrix
 
@@ -191,6 +191,9 @@ def _caption(meta, field: str, lang: str, translations: dict, translate) -> str:
 	return translate(label, lang, translations) or field
 
 
+_FORMULA_LEAD = ("=", "+", "-", "@")
+
+
 def _cell(value) -> str:
 	if value in (None, ""):
 		return ""
@@ -200,6 +203,23 @@ def _cell(value) -> str:
 
 		text = strip_html(text)
 	return " ".join(text.split())
+
+
+def _literal_text(value) -> str:
+	"""Keep untrusted text from being read as a spreadsheet formula."""
+	text = _cell(value)
+	probe = text.lstrip(" \t\r\n\u0000")
+	if probe[:1] in _FORMULA_LEAD:
+		return "'" + text
+	return text
+
+
+def _export_value(value):
+	if isinstance(value, bool):
+		return _literal_text(value)
+	if isinstance(value, (int, float)):
+		return value
+	return _literal_text(value)
 
 
 def _save_csv(filename: str, header: list[str], matrix: list[list[str]], lang: str) -> dict | None:
@@ -216,12 +236,23 @@ def _save_xlsx(filename: str, header: list[str], matrix: list[list[str]], lang: 
 	book = openpyxl.Workbook()
 	sheet = book.active
 	sheet.title = "Export"
-	sheet.append(header)
-	for row in matrix:
-		sheet.append(row)
+	_write_literal_row(sheet, 1, header)
+	for offset, row in enumerate(matrix, start=2):
+		_write_literal_row(sheet, offset, row)
 	buffer = io.BytesIO()
 	book.save(buffer)
 	return _store(filename, buffer.getvalue(), "Excel" if lang != "ar" else "فتح Excel")
+
+
+def _write_literal_row(sheet, row_index: int, values: list) -> None:
+	for column, value in enumerate(values, start=1):
+		cell = sheet.cell(row=row_index, column=column)
+		if isinstance(value, (int, float)) and not isinstance(value, bool):
+			cell.value = value
+			continue
+		text = "" if value is None else str(value)
+		cell.value = text
+		cell.data_type = "s"
 
 
 def _store(filename: str, content: bytes, label: str) -> dict | None:

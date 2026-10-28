@@ -271,32 +271,32 @@ def _read_xlsx_all(content: bytes) -> tuple[list[str], list[list[str]]]:
 
 
 def _column_picks(header: list[str], doctype: str) -> tuple[list[int], list[str]]:
-	columns = _import_columns(doctype)
-	try:
-		from frappe.translate import get_all_translations
+	"""Map file headers the way Frappe Data Import does, including ID and child-row ID."""
+	from frappe.core.doctype.data_import.importer import get_df_for_column_header
 
-		arabic = get_all_translations("ar") or {}
-	except Exception:
-		arabic = {}
-	lookup: dict[str, str] = {}
-	for column in columns:
-		lookup.setdefault(_norm(column["fieldname"]), column["fieldname"])
-		label = column.get("label") or ""
-		if label:
-			lookup.setdefault(_norm(label), column["fieldname"])
-			translated = arabic.get(label) or arabic.get(f"{label}:{doctype}")
-			if translated:
-				lookup.setdefault(_norm(str(translated)), column["fieldname"])
 	indexes: list[int] = []
 	names: list[str] = []
-	used: set[str] = set()
+	used: set[tuple[str, str]] = set()
 	for index, title in enumerate(header):
-		fieldname = lookup.get(_norm(title))
-		if not fieldname or fieldname in used:
+		df = get_df_for_column_header(doctype, title)
+		if not df or not getattr(df, "fieldname", None):
 			continue
-		used.add(fieldname)
+		table = ""
+		child_df = getattr(df, "child_table_df", None)
+		if getattr(df, "is_child_table_field", False) and child_df:
+			table = child_df.fieldname or ""
+		key = (table, df.fieldname)
+		if key in used:
+			continue
+		used.add(key)
+		if table:
+			out_name = f"{table}.{df.fieldname}"
+		elif df.fieldname == "name":
+			out_name = "ID"
+		else:
+			out_name = df.fieldname
 		indexes.append(index)
-		names.append(fieldname)
+		names.append(out_name)
 	return indexes, names
 
 
@@ -320,11 +320,12 @@ def corrected_table(header: list[str], rows: list[list[str]], doctype: str) -> t
 	return _csv_text(names, kept), kept
 
 
-def preview_import(doctype: str, file_url: str) -> dict:
+def preview_import(doctype: str, file_url: str, import_type: str | None = None) -> dict:
 	"""In-memory Frappe preview. Does not insert a Data Import."""
-	from frappe.core.doctype.data_import.importer import INSERT, ImportFile
+	from frappe.core.doctype.data_import.importer import INSERT, UPDATE, ImportFile
 
-	book = ImportFile(doctype, file_url, import_type=INSERT)
+	kind = import_type if import_type in (INSERT, UPDATE, INSERT_NEW, UPDATE_EXISTING) else INSERT
+	book = ImportFile(doctype, file_url, import_type=kind)
 	preview = book.get_data_for_import_preview()
 	messages = []
 	warning_rows: set[int] = set()
@@ -448,10 +449,18 @@ def propose_import(chat: str, file_url: str, doctype: str, import_type: str, lan
 	file_doc = owned_import_file(file_url)
 	content = file_doc.get_content() or b""
 	header, rows = read_full_table(content, file_doc.file_name or "")
+	_indexes, picked_names = _column_picks(header, doctype)
+	if import_type == UPDATE_EXISTING and "ID" not in picked_names:
+		message = (
+			"التحديث يحتاج عمود ID للسجل الموجود."
+			if lang == "ar"
+			else "An update needs an ID column for the existing record."
+		)
+		return {"message": message, "files": [], "pending": None}
 	corrected, kept = corrected_table(header, rows, doctype)
 	corrected_url = save_private_csv(f"corrected-{frappe.scrub(doctype)}.csv", corrected)
 	try:
-		preview = preview_import(doctype, corrected_url)
+		preview = preview_import(doctype, corrected_url, import_type)
 	except Exception:
 		preview = {"total_number_of_rows": len(kept), "warnings": [], "warning_rows": []}
 	files = [{"label": "الملف المصحح" if lang == "ar" else "Corrected file", "url": corrected_url}]
