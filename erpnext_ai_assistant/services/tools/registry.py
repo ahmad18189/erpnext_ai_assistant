@@ -24,12 +24,18 @@ NAME_HINT = re.compile(
 
 
 def publish_step(chat_id: str, step: dict):
+	"""Send one thinking step to the asking user's own socket room.
+
+	Frappe's socket server joins user rooms, not custom ones, so a room such as
+	erp_ai_chat:<id> never reached the browser. The panel keeps only steps whose
+	request_id matches the message it is waiting for (another tab may be chatting too).
+	"""
 	if not chat_id:
 		return
 	frappe.publish_realtime(
 		event="erp_ai_thinking",
-		message=step,
-		room=f"erp_ai_chat:{chat_id}",
+		message={**step, "chat_id": chat_id, "request_id": frappe.flags.get("erp_ai_request_id") or ""},
+		user=frappe.session.user,
 		after_commit=False,
 	)
 

@@ -7,8 +7,33 @@ app_description = "Arabic and English chat assistant for Frappe and ERPNext. Cou
 app_email = "ahmad18189@gmail.com"
 app_license = "MIT"
 
-app_include_js = ["/assets/erpnext_ai_assistant/js/erpnext_ai_assistant.bundle.js?v=ai25-v15"]
-app_include_css = ["/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai25-v15"]
+# The panel is plain ordered files sharing window.erpAi (no build step). Order matters.
+PANEL_FILES = ("core", "desk_compat", "render", "charts", "card", "panel")
+
+
+def _asset_version() -> str:
+	"""Changes whenever a panel file changes, so browsers never keep a stale copy.
+
+	Frappe caches resolved hooks in Redis. After updating the app, run `bench migrate`
+	(or `bench --site <site> clear-cache`) so Desk serves the new version string.
+	"""
+	import hashlib
+	import os
+
+	public = os.path.join(os.path.dirname(__file__), "public")
+	digest = hashlib.sha1(app_version.encode())
+	for rel in [f"js/assistant/{name}.js" for name in PANEL_FILES] + ["css/erpnext_ai_assistant.bundle.css"]:
+		try:
+			with open(os.path.join(public, rel), "rb") as handle:
+				digest.update(handle.read())
+		except OSError:
+			pass
+	return digest.hexdigest()[:10]
+
+
+ASSET_VERSION = _asset_version()
+app_include_js = [f"/assets/erpnext_ai_assistant/js/assistant/{name}.js?v={ASSET_VERSION}" for name in PANEL_FILES]
+app_include_css = [f"/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v={ASSET_VERSION}"]
 
 # Frappe v15 apps screen. Desk routes are /app, not /desk.
 add_to_apps_screen = [
