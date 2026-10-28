@@ -67,7 +67,8 @@ def infer_intent(message: str | None, route: str | None = None, user: str | None
 	from erpnext_ai_assistant.services.targeting import match_doctype
 
 	named = match_doctype(message)
-	if named and action not in ("unknown", "howto"):
+	close = len(candidates) > 1 and margin < 3
+	if named and action not in ("unknown", "howto") and not close:
 		confidence = "high"
 		if not any(row.get("doctype") == named for row in candidates):
 			candidates.insert(
@@ -111,9 +112,11 @@ def clarification_message(intent: dict | None, lang: str) -> str | None:
 	if intent.get("action") == "howto":
 		return None
 	candidates = list(intent.get("candidates") or [])[:3]
+	action = intent.get("action") or "unknown"
+	if len(candidates) == 1 and action == "unknown":
+		return _action_menu(candidates[0], lang)
 	if len(candidates) < 2:
 		return None
-	action = intent.get("action") or "unknown"
 	if lang == "ar":
 		lines = []
 		for index, row in enumerate(candidates, start=1):
@@ -157,9 +160,45 @@ def _label(row: dict, lang: str) -> str:
 	return str(row.get("doctype") or "")
 
 
+def _action_menu(row: dict, lang: str) -> str:
+	name = _label(row, lang)
+	if lang == "ar":
+		return (
+			f"{name}. ماذا تريد؟\n"
+			"1. عدد\n"
+			"2. عرض\n"
+			"3. إنشاء\n"
+			"لن يُحفظ شيء قبل موافقتك."
+		)
+	return (
+		f"{name}. What should I do?\n"
+		"1. Count\n"
+		"2. Show\n"
+		"3. Create\n"
+		"Nothing is saved until you approve."
+	)
+
+
+def _action_choices(row: dict) -> list[dict]:
+	base = {
+		"doctype": row.get("doctype"),
+		"app": row.get("app") or "",
+		"module": row.get("module") or "",
+	}
+	return [
+		{**base, "action": "count", "label_ar": "عدد", "label_en": "Count"},
+		{**base, "action": "query", "label_ar": "عرض", "label_en": "Show"},
+		{**base, "action": "create", "label_ar": "إنشاء", "label_en": "Create"},
+	]
+
+
 def clarify_options(intent: dict | None) -> list[dict]:
+	intent = intent or {}
+	candidates = list(intent.get("candidates") or [])
+	if len(candidates) == 1 and (intent.get("action") or "unknown") == "unknown":
+		return _action_choices(candidates[0])
 	options = []
-	for row in (intent or {}).get("candidates") or []:
+	for row in candidates:
 		options.append(
 			{
 				"doctype": row.get("doctype"),
@@ -182,7 +221,7 @@ def match_prior_choice(message: str | None, facts: dict | None) -> dict | None:
 		return None
 	if raw in _DIGIT_INDEX and _DIGIT_INDEX[raw] < len(options):
 		chosen = dict(options[_DIGIT_INDEX[raw]])
-		chosen["action"] = (facts or {}).get("clarify_action") or "unknown"
+		chosen["action"] = chosen.get("action") or (facts or {}).get("clarify_action") or "unknown"
 		return chosen
 	norm = normalize_arabic(raw)
 	hits = []
@@ -194,7 +233,7 @@ def match_prior_choice(message: str | None, facts: dict | None) -> dict | None:
 	if len(hits) != 1:
 		return None
 	chosen = dict(hits[0])
-	chosen["action"] = (facts or {}).get("clarify_action") or "unknown"
+	chosen["action"] = chosen.get("action") or (facts or {}).get("clarify_action") or "unknown"
 	return chosen
 
 
