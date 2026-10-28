@@ -17,12 +17,12 @@ We put 14 typical questions to the dev site (`erpnext-dev`, Frappe 16.53, ERPNex
 | 3 | Let users leave an unfinished create | P0 bug | ✅ Done |
 | 4 | Fill system fields the way ERPNext does | P1 ease of use | ✅ Done |
 | 5 | Write approval cards in plain language | P1 ease of use | ✅ Done |
-| 6 | Answer with content, not just a list link | P1 ease of use | To do |
+| 6 | Answer with content, not just a list link | P1 ease of use | 🟡 Started (records list + Open list) |
 | 7 | Remove DocType jargon and make choices clickable | P1 ease of use | To do |
 | 8 | Starter prompts based on the user's role | P1 ease of use | To do |
 | 9 | Use the open form as context | P1 ease of use | To do |
 | 10 | Answer report questions (receivables, aging, sales) | P2 feature | To do |
-| 11 | Offer follow-up actions after an answer | P2 feature | To do |
+| 11 | Offer follow-up actions after an answer | P2 feature | 🟡 Started (buttons after counts and lists) |
 | 12 | Document actions ERPNext already has (`make_*`) | P2 feature | To do |
 | 13 | How-to answers for the current screen, faster | P2 feature | To do |
 | 14 | 👍/👎 feedback on answers | P2 feature | To do |
@@ -247,6 +247,13 @@ Still open from the security review, to be done with the redesign: `rate_message
 
 ### 11. Offer follow-up actions after an answer
 - **Fix:** after an answer, add buttons such as [Show them] [Chart] [Export to Excel] [Draft reminder]. "لديك 4 فواتير متأخرة." should come with the list and the total.
+- **🟡 First part done (2026-10-28), at the user's request:** "when something is shown as a count, add a button or option to show it in a table or show the results".
+  - After a count, the answer has three buttons: **عرض القائمة / Show the list**, **مخطط / Chart**, **تصدير Excel / Export to Excel**. After a list or chart, the views not yet shown are offered. There are no buttons after an empty result or with an approval card, and only the newest answer keeps its buttons.
+  - Each button sends a fixed follow-up text from `follow_ups()` (`services/present.py`), e.g. "اعرض هذه كقائمة" or "show them as a list". It goes through the normal chat, so the previous question's filters stay (fix 16), and the button never carries an action or a card id. The label is set as plain text (`renderSuggestions` in `public/js/assistant/panel.js`).
+  - **"Show the list" lists the records themselves** (part of fix 6): `records_table()` in `services/targeting.py` uses the count's own filters and permissions. It shows number, customer, date, total and status, newest first, at most 10 ("Showing the newest 10" when there are more), and an **Open list** button for the same filters in Desk (`/desk/sales-invoice?status=Overdue`).
+  - The Arabic button texts use "هذه" rather than an attached pronoun ("اعرضها"), so they take the fast, exact path instead of the model.
+  - Checked: "كم عدد الفواتير المتأخرة" gives 4 with the three buttons; "عرض القائمة" lists the 4 overdue invoices; "مخطط" and "تصدير Excel" work on the same 4; English is the same with drafts. The browser shows the buttons and clicking works, with no errors. Screenshots: `erpnext-dev/screenshots/followups-*.png`. Tests: `TestFollowUps11` (2 tests); suite 84, only T08 and T21 fail.
+  - Still to do in fix 11: a "Draft reminder" button (it needs an email card), and buttons on model-written answers.
 
 ### 12. Document actions ERPNext already has
 - **Fix:** wrap `make_sales_order`, `get_payment_entry`, lead → customer and similar functions behind the same approval card, instead of filling forms field by field.
@@ -267,3 +274,4 @@ Still open from the security review, to be done with the redesign: `rate_message
 - 2026-10-28: fixes 15 and 16 (found while testing) done, then fixes 4 and 5. `test_usability_fixes.py` has 23 tests covering fixes 1–5, 15 and 16. Suite: 65 tests; only T08 and T21 fail, as on `main` before. Research notes added: `docs/ARCHITECTURE_REVIEW.md` (agent architecture compared with this code) and `docs/CHAT_DESIGN_RESEARCH.md` (how other assistants design their chat). Fixes 6–14 are next, with the panel redesign.
 - 2026-10-28: security fixes S1–S7 from the redesign review, with `test_security.py`.
 - 2026-10-28: panel redesign plan approved; phase 0 (foundations) done: live steps work, the panel is split into six files, answers are built without HTML, the conversation survives rebuilds, one automatic asset version. Details in `docs/PANEL_REDESIGN_PLAN.md`, Progress.
+- 2026-10-28: next-step buttons after counts (fix 11, first part) and a real records list with an Open list link (fix 6, first part).

@@ -404,6 +404,63 @@ _LIST_PAGE = 15
 _GROUP_PAGE = 40
 
 
+LIST_LIMIT = 10
+
+
+def records_table(doctype: str, text: str | None, lang: str, limit: int = LIST_LIMIT) -> tuple[str, int]:
+	"""The matching records themselves (number, who, date, amount, status), newest first.
+
+	Uses the same filters as the count, so "4 overdue invoices" then "show them" lists those 4.
+	Returns (markdown, total).
+	"""
+	meta = frappe.get_meta(doctype)
+	plan = _summary_plan(meta)
+	filters, note, problem, empty = _query_filters(doctype, plan, text, lang)
+	if problem:
+		return problem, 0
+	label = _tr(doctype, lang) or doctype
+	total = 0 if empty else _sql_total(doctype, filters)
+	if not total:
+		return (f"لا توجد سجلات {label} مطابقة." if lang == "ar" else f"No matching {label} records."), 0
+	who = next((f for f in (plan.get("group_name"), plan.get("title"), "customer_name", "supplier_name", "party_name", plan.get("group")) if f and meta.has_field(f)), None)
+	columns = list(dict.fromkeys(f for f in ("name", who, plan.get("date"), plan.get("amount"), plan.get("select")) if f))
+	order = f"{plan['date']} desc" if plan.get("date") else "modified desc"
+	rows = frappe.get_list(doctype, filters=filters, fields=columns, order_by=order, limit_page_length=limit)
+	book = _translations(lang)
+	header = [("الرقم" if lang == "ar" else "ID") if f == "name" else _tr(meta.get_field(f).label or f, lang, book) for f in columns]
+	lines = ["| " + " | ".join(header) + " |", "| " + " | ".join("---" for _ in columns) + " |"]
+	for row in rows:
+		cells = []
+		for f in columns:
+			value = row.get(f)
+			if value in (None, ""):
+				value = "—"
+			elif f == plan.get("amount"):
+				value = frappe.utils.fmt_money(value)
+			elif f == plan.get("select"):
+				value = _tr(value, lang, book)
+			cells.append(str(value).replace("|", "/").replace("\n", " "))
+		lines.append("| " + " | ".join(cells) + " |")
+	where = f" ({note})" if note else ""
+	if lang == "ar":
+		intro = f"{label}{where}: {total} سجلًا." + (f" يظهر أحدث {len(rows)}." if total > len(rows) else "")
+	else:
+		intro = f"{label}{where}: {total} records." + (f" Showing the newest {len(rows)}." if total > len(rows) else "")
+	return intro + "\n\n" + "\n".join(lines) + "\n" + _list_link(doctype, filters, label, lang), total
+
+
+def _list_link(doctype: str, filters: list, label: str, lang: str) -> str:
+	"""An Open-list button for the same records; simple equal filters travel in the URL."""
+	from urllib.parse import urlencode
+
+	simple = {row[1]: row[3] for row in filters if isinstance(row, (list, tuple)) and len(row) == 4 and row[2] == "=" and isinstance(row[3], (str, int))}
+	path = "/desk/" + frappe.scrub(doctype).replace("_", "-")
+	if simple:
+		path += "?" + urlencode(simple)
+	text = f"افتح قائمة {label}" if lang == "ar" else f"Open the {label} list"
+	return f"[[open:{path}|{text}]]"
+
+
 def summarize_doctype(doctype: str, text: str | None, lang: str) -> str:
 	"""Plain-language rows for any DocType the user can read.
 
