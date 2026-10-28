@@ -23,6 +23,24 @@ def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
 	return chunks
 
 
+def backfill_content_norm() -> int:
+	"""Fill normalized chunk text after the column exists. Safe to run more than once."""
+	if not frappe.db.has_column("ERP AI Knowledge Chunk", "content_norm"):
+		return 0
+	rows = frappe.get_all("ERP AI Knowledge Chunk", fields=["name", "content"], limit_page_length=0)
+	updated = 0
+	for row in rows:
+		frappe.db.set_value(
+			"ERP AI Knowledge Chunk",
+			row.name,
+			"content_norm",
+			normalize_arabic(row.content or ""),
+			update_modified=False,
+		)
+		updated += 1
+	return updated
+
+
 def reindex_knowledge():
 	"""Rebuild skill chunks. ERP AI Enhancement rows are never knowledge."""
 	if not frappe.db.exists("DocType", "ERP AI Knowledge Document"):
@@ -127,16 +145,18 @@ def _rechunk(docname: str):
 	frappe.db.delete("ERP AI Knowledge Chunk", {"document": docname})
 	from erpnext_ai_assistant.services.naming import as_title
 
+	has_norm = frappe.db.has_column("ERP AI Knowledge Chunk", "content_norm")
 	for i, chunk in enumerate(chunk_text(doc.content or "")):
-		frappe.get_doc(
-			{
-				"doctype": "ERP AI Knowledge Chunk",
-				"title": as_title("ERP AI Knowledge Chunk", f"{doc.title} {i + 1}"),
-				"document": docname,
-				"chunk_index": i,
-				"content": chunk,
-			}
-		).insert(ignore_permissions=True)
+		payload = {
+			"doctype": "ERP AI Knowledge Chunk",
+			"title": as_title("ERP AI Knowledge Chunk", f"{doc.title} {i + 1}"),
+			"document": docname,
+			"chunk_index": i,
+			"content": chunk,
+		}
+		if has_norm:
+			payload["content_norm"] = normalize_arabic(chunk)
+		frappe.get_doc(payload).insert(ignore_permissions=True)
 
 
 def on_skill_update(doc, method=None):
@@ -167,8 +187,9 @@ def retrieve(query: str, limit: int = 5) -> list[dict]:
 	tokens = [t for t in re.split(r"\W+", q) if len(t) >= 2]
 	if not tokens:
 		return []
-	# Cap candidates: at most 200 chunks that contain at least one token.
-	or_filters = [["content", "like", f"%{t}%"] for t in tokens[:12]]
+	# Cap candidates: at most 200 chunks that contain at least one normalized token.
+	column = "content_norm" if frappe.db.has_column("ERP AI Knowledge Chunk", "content_norm") else "content"
+	or_filters = [[column, "like", f"%{t}%"] for t in tokens[:12]]
 	chunks = frappe.get_all(
 		"ERP AI Knowledge Chunk",
 		fields=["name", "document", "content", "chunk_index"],

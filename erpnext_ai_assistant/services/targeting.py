@@ -534,7 +534,9 @@ def _query_filters(doctype: str, plan: dict, text: str | None, lang: str):
 	excluded, exclude_note = _select_exclusions(doctype, plan, text, lang)
 	if excluded and plan.get("select"):
 		filters.append([doctype, plan["select"], "not in", excluded])
-	covered, covered_note = _covered_day_filters(doctype, plan, text, filters, lang)
+	covered, covered_note, covered_problem = _covered_day_filters(doctype, plan, text, filters, lang)
+	if covered_problem:
+		return filters, "", covered_problem, False
 	filters.extend(covered)
 	notes = [part for part in (note, exclude_note, covered_note) if part]
 	joiner = "، " if lang == "ar" else ", "
@@ -606,20 +608,37 @@ def _covered_day_filters(doctype: str, plan: dict, text: str | None, filters: li
 	date_field = plan.get("date")
 	party_field = plan.get("group")
 	if not concepts or not date_field or not party_field:
-		return [], ""
+		return [], "", ""
 	party_df = frappe.get_meta(doctype).get_field(party_field)
 	if not party_df or party_df.fieldtype != "Link" or not party_df.options:
-		return [], ""
+		return [], "", ""
 	start, end = _filter_bounds(doctype, date_field, filters)
 	if not start or not end:
-		return [], ""
+		return [], "", ""
 	spans = [row for row in _span_doctypes(party_df.options) if _span_matches(row, concepts)]
 	if not spans:
-		return [], ""
+		return [], "", ""
 	party_names = _filter_in(doctype, party_field, filters)
 	drop: list[str] = []
 	used = ""
 	for span in spans:
+		readable, reason, detail = _span_access(span["doctype"], [span["link"], "from_date", "to_date", "status"])
+		if not readable:
+			label = strip_al(_tr(span["doctype"], lang)) or span["doctype"]
+			if lang == "ar":
+				if reason == "field":
+					text = f"ما أقدر أتحقق من أيام {label} لأن الحقول {detail} فوق مستوى صلاحيتك."
+				elif reason == "missing":
+					text = f"ما أقدر أتحقق من أيام {label} لأن {span['doctype']} غير مثبت."
+				else:
+					text = f"ما أقدر أتحقق من أيام {label} لأنك لا تستطيع قراءة {span['doctype']}."
+			elif reason == "field":
+				text = f"The {label} filter cannot be verified because {detail} on {span['doctype']} is above your permission level."
+			elif reason == "missing":
+				text = f"The {label} filter cannot be verified because {span['doctype']} is not installed."
+			else:
+				text = f"The {label} filter cannot be verified because you cannot read {span['doctype']}."
+			return [], "", text
 		span_filters: dict = {"docstatus": 1, "from_date": ["<=", str(end)], "to_date": [">=", str(start)]}
 		if party_names is not None:
 			if not party_names:
@@ -629,7 +648,7 @@ def _covered_day_filters(doctype: str, plan: dict, text: str | None, filters: li
 		options = [line.strip() for line in ((status.options if status else "") or "").split("\n") if line.strip()]
 		if "Approved" in options:
 			span_filters["status"] = "Approved"
-		ranges = frappe.get_all(
+		ranges = frappe.get_list(
 			span["doctype"],
 			filters=span_filters,
 			fields=[span["link"], "from_date", "to_date"],
@@ -656,11 +675,29 @@ def _covered_day_filters(doctype: str, plan: dict, text: str | None, filters: li
 			used = span["doctype"]
 	drop = list(dict.fromkeys(name for name in drop if name))
 	if not drop:
-		return [], ""
+		return [], "", ""
 	label = strip_al(_tr(used, lang)) or used
 	if lang == "ar":
-		return [[doctype, "name", "not in", drop]], f"باستثناء أيام {label}"
-	return [[doctype, "name", "not in", drop]], f"excluding days covered by {label}"
+		return [[doctype, "name", "not in", drop]], f"باستثناء أيام {label}", ""
+	return [[doctype, "name", "not in", drop]], f"excluding days covered by {label}", ""
+
+
+def _span_access(doctype: str, fields: list[str]) -> tuple[bool, str, str]:
+	"""True only when this user may read the source DocType and every date field used to exclude rows."""
+	if not frappe.db.exists("DocType", doctype):
+		return False, "missing", doctype
+	if not frappe.has_permission(doctype, "read"):
+		return False, "read", doctype
+	meta = frappe.get_meta(doctype)
+	permitted = set(meta.get_permitted_fieldnames(parenttype=doctype))
+	hidden = [
+		field
+		for field in fields
+		if field != "name" and meta.get_field(field) and field not in permitted
+	]
+	if hidden:
+		return False, "field", ", ".join(hidden)
+	return True, "", ""
 
 
 def _filter_bounds(doctype: str, field: str, filters: list):

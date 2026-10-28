@@ -69,6 +69,12 @@
    "fieldname": "content",
    "fieldtype": "Long Text",
    "label": "Content"
+  },
+  {
+   "fieldname": "content_norm",
+   "fieldtype": "Long Text",
+   "label": "Normalized Content",
+   "read_only": 1
   }
  ],
  "permissions": [
