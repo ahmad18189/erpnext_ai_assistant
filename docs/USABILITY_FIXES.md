@@ -152,6 +152,24 @@ Reported from the browser on 2026-10-28: "the chat does not continue from the ol
   - Follow-ups skip the clarify menu, both before and after the model, and the model is told which earlier question is being continued.
   - Checked on the dev site: "how many overdue sales invoices?" → 4; "show them" → the 4 overdue invoices; "which customer has the biggest one?" → "شركة الرواد, 12,300.00"; "export them to excel" → a file with those 4; Arabic "كم عدد الفواتير المتأخرة" → "اعرضها" works too.
 
+## Security fixes from the panel redesign review (2026-10-28)
+
+A four-person agent review of `docs/PANEL_REDESIGN_PLAN.md` (UX, frontend, product, security) found these problems in the **current** code. Both blockers were reproduced on the dev site before fixing.
+
+| # | Problem | Proof before the fix | Fix | After |
+|---|---|---|---|---|
+| S1 | **Forged approval cards.** Role "All" had create/write on ERP AI Pending Action, so any user could insert a card through `/api/resource` with any summary and payload | `viewer@demo.test` inserted `probe-forged-card` with action delete | REST create/write removed for "All" (read own cards only). `before_insert` refuses any card not created through `allow_card_insert()` (used only by `propose_write` and `propose_import`) and sets `user` to the session user | 403 on REST insert |
+| S2 | **A link could approve a card.** `approve_action`, `reject_action`, `run`, `upload_attachment`, `save_my_memory` and `clear_my_memory` accepted GET, which skips Frappe's CSRF check | `GET …/reject_action?pending_action=…` returned 200 | `@frappe.whitelist(methods=["POST"])` on all six | 403 on GET |
+| S3 | **Stale approvals.** A card could be approved after its record changed, or days later | — | New locked `target_modified` field stored at proposal time. Approval refuses and marks the card `expired` if the record changed, was deleted, or the card is more than 24 h old | Card says "ToDo … changed after this card was prepared. Ask again…" and nothing is written |
+| S4 | **A manager could approve another user's card** | — | Only the requester approves. A System Manager can still reject | "Only the person who asked can approve this card" |
+| S5 | **Approval re-checks were incomplete** | — | Per-record permission (`has_permission(dt, need, doc=name)`); DENIED_DOCTYPES checked again; update payloads re-checked with `prepare_payload(…, "update")`; protected keys (`name`, `owner`, `docstatus`, `modified`…) stripped | `test_update_cannot_set_protected_fields` |
+| S6 | **Raw errors reached the user** | `str(e)` returned and stored | ERPNext validation messages are shown as plain text. Anything else is logged to the Error Log with a plain message. The card stays pending so the user can fix the cause and retry | — |
+| S7 | **Model-written links to other sites were clickable** | `inlineMd` turned any `https://` link into an anchor | Only links to this site become anchors. Others are shown as text. Answer text was already HTML-escaped before markdown | — |
+
+Tests: `test_security.py` (8 tests) covers S1–S5 and S7. Two older tests now create their cards through `allow_card_insert()`. Suite: 81 tests; only T08 and T21 fail, as before.
+
+Still open from the security review, to be done with the redesign: `rate_message` must be POST-only, owner-checked and rate-limited; the context chip must use a server permission check; card text should be rebuilt from the payload when history is reloaded.
+
 ## P1: ease of use
 
 ### 4. Fill system fields the way ERPNext does
@@ -247,3 +265,4 @@ Reported from the browser on 2026-10-28: "the chat does not continue from the ol
 - 2026-10-28: file created from the usability review. Fixes 1–3 started.
 - 2026-10-28: fixes 1, 2 and 3 done and checked on the dev site. Fix 5 started (record line on cards). Fix 15 added after testing showed wrong counts. The app suite runs 65 tests: the 15 new ones pass, and the only failures are T08 and T21, which also fail on `main`.
 - 2026-10-28: fixes 15 and 16 (found while testing) done, then fixes 4 and 5. `test_usability_fixes.py` has 23 tests covering fixes 1–5, 15 and 16. Suite: 65 tests; only T08 and T21 fail, as on `main` before. Research notes added: `docs/ARCHITECTURE_REVIEW.md` (agent architecture compared with this code) and `docs/CHAT_DESIGN_RESEARCH.md` (how other assistants design their chat). Fixes 6–14 are next, with the panel redesign.
+- 2026-10-28: security fixes S1–S7 from the redesign review, with `test_security.py`.

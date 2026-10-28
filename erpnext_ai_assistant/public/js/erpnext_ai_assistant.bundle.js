@@ -673,7 +673,11 @@
       codes.push(code);
       return "\u0000" + (codes.length - 1) + "\u0000";
     });
+    // Model text can carry links planted in record data. Only this site's own pages become links;
+    // anything else stays visible as text so nobody is sent somewhere by a click.
     s = s.replace(/\[([^\]<]+)\]\((https?:\/\/[^)\s]+)\)/g, function (_m, label, url) {
+      var origin = window.location.origin + "/";
+      if (url.indexOf(origin) !== 0) return label + " (" + url + ")";
       return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + "</a>";
     });
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");

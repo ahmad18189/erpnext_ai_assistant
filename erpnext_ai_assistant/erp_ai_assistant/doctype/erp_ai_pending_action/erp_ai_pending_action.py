@@ -16,22 +16,38 @@ LOCKED_FIELDS = (
 	"target_name",
 	"user",
 	"chat",
+	"target_modified",
 )
 
 # executed/rejected/failed are terminal. An import moves pending -> queued -> starting -> executed.
 # A failed queue start returns to approved so the same Data Import can be started again.
+# A pending card expires when it is too old or its record changed after it was proposed.
 TRANSITIONS = {
-	"pending": {"approved", "queued", "rejected", "executed", "failed"},
+	"pending": {"approved", "queued", "rejected", "expired", "executed", "failed"},
 	"queued": {"starting", "approved", "failed"},
 	"starting": {"executed", "approved", "failed"},
 	"approved": {"starting", "executed", "failed"},
 	"executed": set(),
 	"rejected": set(),
+	"expired": set(),
 	"failed": set(),
 }
 
 
+def allow_card_insert():
+	"""Only the server's proposal code may create a card (registry.propose_write, imports.propose_import)."""
+	frappe.flags.erp_ai_propose = True
+
+
 class ERPAIPendingAction(Document):
+	def before_insert(self):
+		# A card shown to a user must come from a proposal on the server, never from a REST insert
+		# with a friendly summary and a different payload.
+		if not frappe.flags.get("erp_ai_propose"):
+			frappe.throw("Approval cards are created by the assistant only", frappe.PermissionError)
+		frappe.flags.erp_ai_propose = False
+		self.user = frappe.session.user
+
 	def validate(self):
 		if self.is_new():
 			self.payload_hash = payload_hash(self.payload_json)

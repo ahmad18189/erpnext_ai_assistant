@@ -11,6 +11,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from erpnext_ai_assistant.api.chat import _approve_import, reject_action
+from erpnext_ai_assistant.erp_ai_assistant.doctype.erp_ai_pending_action.erp_ai_pending_action import allow_card_insert
 from erpnext_ai_assistant.services.imports import corrected_table, preview_import, propose_import
 from erpnext_ai_assistant.services.rag.service import backfill_content_norm, retrieve
 from erpnext_ai_assistant.services.sheets import _export_value, _save_csv, _write_literal_row
@@ -94,6 +95,7 @@ class TestReviewFixes(FrappeTestCase):
 		from frappe.handler import execute_cmd
 
 		frappe.set_user("Administrator")
+		allow_card_insert()  # cards come only from the server's proposal path
 		doc = frappe.get_doc(
 			{
 				"doctype": "ERP AI Pending Action",
@@ -243,6 +245,7 @@ class TestReviewFixes(FrappeTestCase):
 			"file_url": "/private/files/todo.csv",
 			"row_count": 1,
 		}
+		allow_card_insert()  # cards come only from the server's proposal path
 		doc = frappe.get_doc(
 			{
 				"doctype": "ERP AI Pending Action",

@@ -10,7 +10,7 @@ from erpnext_ai_assistant.services import run_chat as orch
 from erpnext_ai_assistant.services.moderation import abuse as abuse_mod
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def run(
 	message: str,
 	route: str | None = None,
@@ -32,7 +32,7 @@ def run(
 	)
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def upload_attachment():
 	"""Store one private file for the current user and, for tables, review import templates."""
 	if frappe.session.user == "Guest":
@@ -131,7 +131,7 @@ def _images_from_attachments(attachments) -> list[dict]:
 	return images
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: int | bool = 0):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
@@ -145,8 +145,9 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	# Lock the row so a second approval cannot execute the same proposal.
 	frappe.db.sql("select name from `tabERP AI Pending Action` where name=%s for update", pending_action)
 	doc = frappe.get_doc("ERP AI Pending Action", pending_action)
-	if doc.user != frappe.session.user and "System Manager" not in frappe.get_roles():
-		frappe.throw("Not your pending action", frappe.PermissionError)
+	# Only the person who asked approves. A manager can still reject a card, never run it.
+	if doc.user != frappe.session.user:
+		frappe.throw("Only the person who asked can approve this card", frappe.PermissionError)
 	retry_import = doc.action_type == "import" and doc.status == "approved"
 	if doc.status != "pending" and not retry_import:
 		frappe.throw(f"Action is {doc.status}")
@@ -159,9 +160,20 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 
 	if (doc.payload_hash or "") != payload_hash(doc.payload_json):
 		frappe.throw("This approval no longer matches the proposed payload", frappe.ValidationError)
+	if doc.status == "pending":
+		stale = _card_stale_reason(doc)
+		if stale:
+			doc.status = "expired"
+			doc.result_json = json.dumps({"reason": stale}, ensure_ascii=False)
+			_save_pending(doc)
+			return {"status": "expired", "message": stale}
 
 	dt = doc.target_doctype
 	action = doc.action_type
+	from erpnext_ai_assistant.services.schema import DENIED_DOCTYPES
+
+	if dt in DENIED_DOCTYPES:
+		frappe.throw(f"{dt} is not available for assistant writes", frappe.PermissionError)
 	if action == "import":
 		if doc.user != frappe.session.user:
 			frappe.throw("Not your pending action", frappe.PermissionError)
@@ -175,7 +187,8 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 		"cancel": "cancel",
 	}
 	need = perm_map.get(action, "write")
-	if not frappe.has_permission(dt, need):
+	allowed = frappe.has_permission(dt, need) if action == "create" else frappe.has_permission(dt, need, doc=doc.target_name)
+	if not allowed:
 		frappe.throw(f"No {need} permission for {dt}", frappe.PermissionError)
 
 	doc.acknowledgment_text = acknowledgment_text.strip()
@@ -194,24 +207,20 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 		if checked["missing"] or checked["errors"]:
 			frappe.throw("Payload does not satisfy the DocType: " + "; ".join(checked["errors"]))
 		payload = checked["payload"]
+	elif action == "update":
+		payload = {key: value for key, value in payload.items() if key not in _PROTECTED_KEYS}
+		checked = prepare_payload(dt, payload, "update", apply_defaults=False)
+		if checked["errors"]:
+			frappe.throw("Payload does not satisfy the DocType: " + "; ".join(checked["errors"]))
+		payload = checked["payload"]
 	try:
 		result = _execute(action, dt, doc.target_name, payload)
 		doc.status = "executed"
 		doc.result_json = json.dumps(result, ensure_ascii=False, default=str)
 	except Exception as e:
-		doc.status = "failed"
-		doc.result_json = json.dumps({"error": str(e)}, ensure_ascii=False)
-		frappe.flags.erp_ai_mutate_pending = True
-		try:
-			doc.save()
-		finally:
-			frappe.flags.erp_ai_mutate_pending = False
-		raise
-	frappe.flags.erp_ai_mutate_pending = True
-	try:
-		doc.save()
-	finally:
-		frappe.flags.erp_ai_mutate_pending = False
+		# The card stays pending, so the user can fix the cause and approve again.
+		frappe.throw(_plain_error(e))
+	_save_pending(doc)
 	link = result.get("link") if isinstance(result, dict) else None
 	message = _created_message(action, dt, result)
 	if doc.chat and message:
@@ -235,10 +244,42 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	}
 
 
+# Fields a card may never set on an existing record.
+_PROTECTED_KEYS = {"name", "owner", "creation", "modified", "modified_by", "docstatus", "doctype", "idx", "parent", "parenttype", "parentfield"}
+CARD_TTL_HOURS = 24
+
+
+def _card_stale_reason(doc) -> str:
+	"""Why a pending card may no longer be approved, or "" when it is still current."""
+	age = frappe.utils.time_diff_in_hours(frappe.utils.now_datetime(), doc.creation)
+	if age > CARD_TTL_HOURS:
+		return "This card is more than a day old. Ask again to prepare a fresh one."
+	if doc.target_name and doc.get("target_modified"):
+		current = frappe.db.get_value(doc.target_doctype, doc.target_name, "modified")
+		if current is None:
+			return f"{doc.target_doctype} {doc.target_name} no longer exists."
+		if frappe.utils.get_datetime(current) != frappe.utils.get_datetime(doc.target_modified):
+			return f"{doc.target_doctype} {doc.target_name} changed after this card was prepared. Ask again to prepare a fresh one."
+	return ""
+
+
+def _plain_error(exc: Exception) -> str:
+	"""ERPNext validation messages are written for users; anything else is logged, not shown."""
+	if isinstance(exc, frappe.ValidationError):
+		from frappe.utils import strip_html
+
+		text = strip_html(str(exc)).strip()
+		if text:
+			return text
+	frappe.log_error(title="ERP AI approval failed")
+	return "The change could not be saved. Your administrator can see the details in the Error Log."
+
+
 def _save_pending(doc) -> None:
+	# Users cannot write cards over REST; approve/reject change them here, with the lock flag set.
 	frappe.flags.erp_ai_mutate_pending = True
 	try:
-		doc.save()
+		doc.save(ignore_permissions=True)
 	finally:
 		frappe.flags.erp_ai_mutate_pending = False
 
@@ -346,7 +387,7 @@ def _approve_import(doc, acknowledgment_text: str) -> dict:
 	}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def reject_action(pending_action: str, reason: str | None = None):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
@@ -359,12 +400,8 @@ def reject_action(pending_action: str, reason: str | None = None):
 	doc.status = "rejected"
 	doc.resolved_by = frappe.session.user
 	doc.resolved_at = frappe.utils.now_datetime()
-	doc.result_json = json.dumps({"reason": reason or ""}, ensure_ascii=False)
-	frappe.flags.erp_ai_mutate_pending = True
-	try:
-		doc.save()
-	finally:
-		frappe.flags.erp_ai_mutate_pending = False
+	doc.result_json = json.dumps({"reason": (reason or "")[:500]}, ensure_ascii=False)
+	_save_pending(doc)
 	return {"status": "rejected"}
 
 
@@ -439,7 +476,7 @@ def bootstrap(route: str | None = None):
 	}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def clear_my_memory():
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
@@ -462,7 +499,7 @@ def list_my_memory():
 	return {"items": rows}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def save_my_memory(key: str, value: str, confirmed: int | bool | str = 0):
 	"""Save only when the panel sends confirmed=1. The model cannot call this."""
 	if frappe.session.user == "Guest":
