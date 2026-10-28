@@ -172,8 +172,7 @@ def _seed_settings_children():
 	from erpnext_ai_assistant.services.apps import installed_app_routes
 
 	wanted_overlays = [
-		{"path_pattern": "/desk", "label": "Desk", "host_hint": "desk", "enabled": 1},
-		{"path_pattern": "/app", "label": "Desk (legacy /app)", "host_hint": "desk", "enabled": 1},
+		{"path_pattern": "/app", "label": "Desk", "host_hint": "desk", "enabled": 1},
 	]
 	for app_route in installed_app_routes():
 		wanted_overlays.append(
@@ -359,45 +358,42 @@ def _seed_skills():
 
 
 def _seed_desktop_icon():
-	"""Ensure the Desk icon/workspace exist; do not wipe custom desktop layouts beyond unhiding."""
+	"""Ensure the v15 Desk icon and workspace exist. Do not touch other icons."""
 	if not frappe.db.exists("DocType", "Desktop Icon"):
 		return
-	import json
 
 	label = "The ERPNext-AI-Assistant"
-	logo = "/assets/erpnext_ai_assistant/images/erp-ai-logo.svg"
-	link = "/desk/the-erpnext-ai-assistant"
+	link = "/app/the-erpnext-ai-assistant"
 	if frappe.db.exists("Desktop Icon", label):
 		doc = frappe.get_doc("Desktop Icon", label)
 		changed = False
 		if doc.hidden:
 			doc.hidden = 0
 			changed = True
-		if not doc.logo_url:
-			doc.logo_url = logo
-			changed = True
 		if not doc.link:
 			doc.link = link
+			changed = True
+		if not doc.type:
+			doc.type = "link"
 			changed = True
 		if changed:
 			doc.save(ignore_permissions=True)
 	else:
-		doc = frappe.get_doc(
+		frappe.get_doc(
 			{
 				"doctype": "Desktop Icon",
 				"label": label,
-				"icon_type": "App",
-				"link_type": "External",
+				"module_name": "ERP AI Assistant",
+				"type": "link",
 				"link": link,
 				"app": "erpnext_ai_assistant",
 				"icon": "message",
-				"logo_url": logo,
+				"color": "#1e3a5f",
 				"hidden": 0,
 				"standard": 1,
 				"idx": 3,
 			}
-		)
-		doc.insert(ignore_permissions=True)
+		).insert(ignore_permissions=True)
 
 	if frappe.db.exists("Workspace", label):
 		frappe.db.set_value(
@@ -407,53 +403,4 @@ def _seed_desktop_icon():
 			update_modified=False,
 		)
 
-	if frappe.db.exists("DocType", "Desktop Layout"):
-		entry = {
-			"label": doc.label,
-			"bg_color": getattr(doc, "bg_color", None) or "blue",
-			"link": doc.link,
-			"link_type": doc.link_type,
-			"app": doc.app,
-			"icon_type": doc.icon_type,
-			"parent_icon": None,
-			"icon": doc.icon,
-			"link_to": doc.link_to,
-			"idx": 2,
-			"standard": 1,
-			"logo_url": doc.logo_url,
-			"hidden": 0,
-			"name": doc.name,
-			"restrict_removal": 0,
-			"icon_image": None,
-			"child_icons": [],
-		}
-		for lay in frappe.get_all("Desktop Layout", pluck="name"):
-			raw = frappe.db.get_value("Desktop Layout", lay, "layout") or "[]"
-			try:
-				data = json.loads(raw)
-			except Exception:
-				continue
-			if not isinstance(data, list):
-				continue
-			names = {(x.get("name") or x.get("label")) for x in data if isinstance(x, dict)}
-			if doc.name in names or doc.label in names:
-				continue
-			data.insert(min(1, len(data)), entry)
-			frappe.db.set_value(
-				"Desktop Layout",
-				lay,
-				"layout",
-				json.dumps(data, ensure_ascii=False),
-				update_modified=False,
-			)
-
-	try:
-		from frappe.desk.doctype.desktop_icon.desktop_icon import (
-			clear_desktop_icons_cache,
-			clear_every_users_desktop_icons,
-		)
-
-		clear_every_users_desktop_icons()
-		clear_desktop_icons_cache()
-	except Exception:
-		frappe.cache.delete_key("desktop_icons")
+	frappe.cache.delete_key("desktop_icons")

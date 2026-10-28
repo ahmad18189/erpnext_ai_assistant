@@ -636,7 +636,7 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 		if not frappe.has_permission("Data Import", "read"):
 			self.skipTest("No read permission on Data Import")
 		opened = desk_link("افتح أداة الاستيراد", "ar")
-		self.assertIn("[[open:/desk/data-import|", opened["reply"])
+		self.assertIn("[[open:/app/data-import|", opened["reply"])
 		self.assertNotIn("http", opened["reply"])
 		self.assertIsNone(desk_link("https://example.com/import", "en"))
 

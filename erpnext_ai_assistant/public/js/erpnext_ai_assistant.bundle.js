@@ -146,9 +146,9 @@
   }
 
   function normalizeDeskPath(path) {
-    // Frappe v16 serves Desk at /desk; /app redirects there.
-    if (path === "/app" || path.indexOf("/app/") === 0) {
-      return "/desk" + path.slice(4);
+    // Frappe v15 serves Desk at /app. Accept a /desk pattern from older settings.
+    if (path === "/desk" || path.indexOf("/desk/") === 0) {
+      return "/app" + path.slice(5);
     }
     return path;
   }
@@ -158,23 +158,15 @@
     var raw = location.pathname || "";
     function hit(pat) {
       if (!pat) return false;
-      if (raw === pat || raw.indexOf(pat) === 0) return true;
-      if (path === pat || path.indexOf(pat) === 0) return true;
-      // Settings may still list /app while browser is on /desk
-      if (pat === "/app" || pat.indexOf("/app/") === 0) {
-        var deskPat = "/desk" + pat.slice(4);
-        if (raw === deskPat || raw.indexOf(deskPat) === 0) return true;
-        if (path === deskPat || path.indexOf(deskPat) === 0) return true;
-      }
-      if (pat === "/desk" || pat.indexOf("/desk/") === 0) {
-        if (raw.indexOf("/app") === 0 || path.indexOf("/desk") === 0) return true;
-      }
+      var normalized = normalizeDeskPath(pat);
+      if (raw === pat || (pat !== "/" && raw.indexOf(pat) === 0)) return true;
+      if (path === normalized || (normalized !== "/" && path.indexOf(normalized) === 0)) return true;
       return false;
     }
     var appRoutes = (state.boot && state.boot.app_routes) || [];
     if (appRoutes.some(function (row) { return hit(row && row.route); })) return true;
     if (!pages || !pages.length) {
-      return hit("/desk") || hit("/app");
+      return hit("/app") || hit("/desk");
     }
     return pages.some(function (p) {
       return p && p.enabled && hit(p.path_pattern || "");
@@ -615,7 +607,7 @@
     if (!path || typeof path !== "string") return "";
     if (path.indexOf("://") !== -1 || path.indexOf("//") === 0 || path.indexOf("\\") !== -1) return "";
     if (path.charAt(0) !== "/") return "";
-    if (path.indexOf("/desk/") === 0) return path;
+    if (path.indexOf("/app/") === 0 || path.indexOf("/desk/") === 0) return path;
     var routes = (state.boot && state.boot.app_routes) || [];
     for (var i = 0; i < routes.length; i++) {
       var route = (routes[i] && routes[i].route) || "";
@@ -646,10 +638,11 @@
         frappe.set_route.apply(frappe, link.route);
         return;
       }
-      if (window.frappe && frappe.set_route && path.indexOf("/desk/") === 0) {
+      if (window.frappe && frappe.set_route && (path.indexOf("/app/") === 0 || path.indexOf("/desk/") === 0)) {
         ev.preventDefault();
         var bits = path.split("/").filter(Boolean);
-        frappe.set_route.apply(frappe, bits);
+        if (bits[0] === "app" || bits[0] === "desk") bits.shift();
+        if (bits.length) frappe.set_route.apply(frappe, bits);
       }
     });
     return a;

@@ -373,7 +373,6 @@ def failed_row_csv(data_import_name: str) -> str:
 		data_import.reference_doctype,
 		data_import.import_file,
 		import_type=data_import.import_type,
-		data_import_name=data_import.name,
 	)
 	logs = frappe.get_all(
 		"Data Import Log",
@@ -404,7 +403,9 @@ def import_status_message(data_import_name: str, lang: str) -> dict:
 	success = int(status.get("success") or 0)
 	failed = int(status.get("failed") or 0)
 	warnings = (data_import.template_warnings or "").strip()
-	link = f"[[open:/desk/data-import/{data_import.name}|{data_import.name}]]"
+	from erpnext_ai_assistant.services.desk_link import desk_path
+
+	link = f"[[open:{desk_path('data-import', data_import.name)}|{data_import.name}]]"
 	files = []
 	if lang == "ar":
 		if state == "Success":

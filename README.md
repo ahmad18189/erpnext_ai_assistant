@@ -111,7 +111,7 @@ Write with your Frappe version, the question you asked, and what the assistant r
 
 ## Install
 
-Frappe v16. ERPNext, HR, and CRM are optional.
+Frappe v15. ERPNext, HR, and CRM are optional. Desk on this branch is `/app`.
 
 ```bash
 cd /path/to/frappe-bench

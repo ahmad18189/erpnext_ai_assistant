@@ -7,7 +7,16 @@ import re
 
 import frappe
 from erpnext_ai_assistant.services import run_chat as orch
+from erpnext_ai_assistant.services.desk_link import desk_path
 from erpnext_ai_assistant.services.moderation import abuse as abuse_mod
+
+
+def has_app_permission() -> bool:
+	"""Apps-screen hook. Workspace is System Manager only."""
+	user = getattr(frappe.session, "user", None)
+	if not user or user == "Guest":
+		return False
+	return "System Manager" in frappe.get_roles(user)
 
 
 @frappe.whitelist()
@@ -286,7 +295,7 @@ def _approve_import(doc, acknowledgment_text: str) -> dict:
 	return {
 		"status": doc.status,
 		"result": created,
-		"link": {"desk_route": f"/desk/data-import/{data_import.name}", "label": data_import.name},
+		"link": {"desk_route": desk_path("data-import", data_import.name), "label": data_import.name},
 		"message": report["message"],
 		"files": report.get("files") or [],
 	}
@@ -471,9 +480,9 @@ def _record_link(doctype: str, name: str) -> dict:
 		"doctype": doctype,
 		"name": name,
 		"label": f"{doctype} {name}",
-		"desk_route": f"/desk/{slug}/{safe}",
+		"desk_route": desk_path(slug, safe),
 		"crm_route": app_route,
-		"route": ["desk", slug, name],
+		"route": [slug, name],
 	}
 
 

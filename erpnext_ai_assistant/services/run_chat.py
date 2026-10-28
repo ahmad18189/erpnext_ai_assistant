@@ -139,7 +139,7 @@ def run_chat(
 	step("work", "بوابة نطاق العمل", "Work-scope gate", "work_gate", "running")
 	work_blob = " ".join([message, *recent_user])
 	if settings.work_only and not (
-		work_gate.is_work_related(message, route) or work_gate.is_work_related(work_blob, route or "/desk")
+		work_gate.is_work_related(message, route) or work_gate.is_work_related(work_blob, route or "/app")
 	):
 		ar, en = work_gate.refusal_texts(settings)
 		text = ar if lang == "ar" else en

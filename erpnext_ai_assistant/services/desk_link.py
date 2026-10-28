@@ -10,6 +10,18 @@ from erpnext_ai_assistant.services.doctype_catalog import match_catalog
 from erpnext_ai_assistant.services.schema import DENIED_DOCTYPES
 from erpnext_ai_assistant.services.targeting import _COUNT_WORDS, _CREATE_WORDS, _has
 
+# Frappe v15 serves Desk at /app. The v16 app uses /desk.
+DESK_ROOT = "/app"
+
+
+def desk_path(*parts: str) -> str:
+	"""Same-site Desk path. Parts are scrubbed route segments, never a full URL."""
+	cleaned = [str(part).strip("/") for part in parts if part]
+	if not cleaned:
+		return DESK_ROOT
+	return DESK_ROOT + "/" + "/".join(cleaned)
+
+
 _NAV_WORDS = (
 	"افتح",
 	"خذني",
@@ -87,7 +99,7 @@ def _slug(doctype: str) -> str:
 
 def _payload(doctype: str, message: str | None, lang: str, create: bool) -> dict:
 	slug = _slug(doctype)
-	path = f"/desk/{slug}/new" if create else f"/desk/{slug}"
+	path = desk_path(slug, "new") if create else desk_path(slug)
 	label = _label(doctype, message, lang)
 	if lang == "ar" or re.search(r"[\u0600-\u06FF]", message or ""):
 		sentence = f"هذا رابط {label} في هذا الموقع."
