@@ -30,7 +30,15 @@ def _cache_key() -> str:
 
 
 def _empty_index() -> dict:
-	return {"version": 2, "fields": {}, "doctypes": {}}
+	return {"version": 3, "fields": {}, "doctypes": {}, "modules": {}, "apps": {}}
+
+
+def _rdf_root() -> Path:
+	return _graph_file().parent / "erp_ai_rdf"
+
+
+def _safe_stem(name: str) -> str:
+	return frappe.scrub(name or "module") or "module"
 
 
 def _field_index(index: dict | None) -> dict:
@@ -60,7 +68,9 @@ def _app_for_doctype(doctype: str) -> str:
 def _translation_forward() -> dict[str, list[str]]:
 	"""English source (context stripped) -> Arabic strings."""
 	try:
-		raw = frappe.translate.get_all_translations("ar") or {}
+		from frappe.translate import get_all_translations
+
+		raw = get_all_translations("ar") or {}
 	except Exception:
 		raw = {}
 	forward: dict[str, list[str]] = {}
@@ -130,7 +140,15 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None, force_ttl: bool = False
 		for label in labels:
 			if label and label not in seen_labels:
 				seen_labels.append(label)
-		doctype_rows[dt] = {"module": module, "app": app, "labels": seen_labels}
+		links, children, selects = _structure(meta, forward)
+		doctype_rows[dt] = {
+			"module": module,
+			"app": app,
+			"labels": seen_labels,
+			"links": links,
+			"children": children,
+			"selects": selects,
+		}
 		for df in meta.fields:
 			if not df.fieldname or df.fieldtype in _LAYOUT:
 				continue
@@ -139,6 +157,8 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None, force_ttl: bool = False
 				"fieldname": df.fieldname,
 				"label": df.label or df.fieldname,
 				"fieldtype": df.fieldtype,
+				"module": module,
+				"app": app,
 			}
 			_add_label(bucket, df.label or "", row)
 			_add_label(bucket, df.fieldname, row)
@@ -151,12 +171,15 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None, force_ttl: bool = False
 					_add_label(bucket, alias, boosted)
 
 	fields = {key: list(rows.values()) for key, rows in bucket.items()}
-	index = {"version": 2, "fields": fields, "doctypes": doctype_rows}
+	modules, apps = _group_modules(doctype_rows)
+	index = {"version": 3, "fields": fields, "doctypes": doctype_rows, "modules": modules, "apps": apps}
 	if force_ttl:
 		_write_turtle(fields)
 	path = _graph_file()
 	path.parent.mkdir(parents=True, exist_ok=True)
 	path.write_text(json.dumps(index, ensure_ascii=False))
+	_write_module_files(doctype_rows, modules, apps)
+	_write_module_turtles(doctype_rows)
 	frappe.cache().set_value(_cache_key(), index)
 	try:
 		from erpnext_ai_assistant.services.doctype_catalog import clear_doctype_catalog
@@ -164,7 +187,151 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None, force_ttl: bool = False
 		clear_doctype_catalog()
 	except Exception:
 		pass
-	return {"keys": len(fields), "doctypes": len(doctype_rows), "path": str(path)}
+	return {
+		"keys": len(fields),
+		"doctypes": len(doctype_rows),
+		"modules": len(modules),
+		"apps": len(apps),
+		"path": str(path),
+	}
+
+
+def _structure(meta, forward: dict) -> tuple[list, list, list]:
+	"""Links, child tables, and short Select fields. Same shape for every module."""
+	links, children, selects = [], [], []
+	for df in meta.fields:
+		if not df.fieldname or df.fieldtype in _LAYOUT:
+			continue
+		if df.fieldtype == "Link" and df.options:
+			links.append({"fieldname": df.fieldname, "target": df.options})
+		elif df.fieldtype == "Table" and df.options:
+			children.append({"fieldname": df.fieldname, "target": df.options})
+		elif df.fieldtype == "Select" and df.options:
+			options = []
+			for line in (df.options or "").split("\n"):
+				value = line.strip()
+				if not value:
+					continue
+				labels = [value]
+				for translated in forward.get(normalize_arabic(value), []):
+					if translated not in labels:
+						labels.append(translated)
+				options.append({"value": value, "labels": labels})
+			if 1 < len(options) <= 12:
+				selects.append({"fieldname": df.fieldname, "options": options})
+	return links, children, selects
+
+
+def _group_modules(doctype_rows: dict) -> tuple[dict, dict]:
+	modules: dict[str, dict] = {}
+	apps: dict[str, list] = {}
+	for name, row in doctype_rows.items():
+		module = row.get("module") or "Other"
+		app = row.get("app") or ""
+		bucket = modules.setdefault(module, {"app": app, "doctypes": []})
+		bucket["doctypes"].append(name)
+		app_modules = apps.setdefault(app or "unknown", [])
+		if module not in app_modules:
+			app_modules.append(module)
+	for bucket in modules.values():
+		bucket["doctypes"].sort()
+	return modules, apps
+
+
+def _write_module_files(doctype_rows: dict, modules: dict, apps: dict) -> None:
+	"""One JSON graph per module and a short index per app. Generic for every module."""
+	root = _rdf_root()
+	module_dir = root / "modules"
+	app_dir = root / "apps"
+	module_dir.mkdir(parents=True, exist_ok=True)
+	app_dir.mkdir(parents=True, exist_ok=True)
+	for old in module_dir.glob("*.json"):
+		old.unlink()
+	for old in app_dir.glob("*.json"):
+		old.unlink()
+	for module, summary in modules.items():
+		body = {
+			"module": module,
+			"app": summary.get("app") or "",
+			"doctypes": {name: doctype_rows[name] for name in summary.get("doctypes") or [] if name in doctype_rows},
+		}
+		(module_dir / f"{_safe_stem(module)}.json").write_text(json.dumps(body, ensure_ascii=False))
+	for app, module_names in apps.items():
+		(app_dir / f"{_safe_stem(app)}.json").write_text(
+			json.dumps({"app": app, "modules": module_names}, ensure_ascii=False)
+		)
+
+
+def _write_module_turtles(doctype_rows: dict) -> None:
+	from urllib.parse import quote
+
+	from rdflib import Graph, Literal, Namespace, URIRef
+
+	root = _rdf_root() / "modules"
+	root.mkdir(parents=True, exist_ok=True)
+	for old in root.glob("*.ttl"):
+		old.unlink()
+	by_module: dict[str, list[tuple[str, dict]]] = {}
+	for name, row in doctype_rows.items():
+		by_module.setdefault(row.get("module") or "Other", []).append((name, row))
+	ns = Namespace("urn:erpnext-ai-assistant:")
+	for module, rows in by_module.items():
+		graph = Graph()
+		module_node = URIRef(str(ns) + "module/" + quote(module))
+		graph.add((module_node, ns.name, Literal(module)))
+		if rows and rows[0][1].get("app"):
+			graph.add((module_node, ns.app, Literal(rows[0][1]["app"])))
+		for name, row in rows:
+			subject = URIRef(str(ns) + "doctype/" + quote(name))
+			graph.add((module_node, ns.doctype, subject))
+			graph.add((subject, ns.name, Literal(name)))
+			for label in row.get("labels") or []:
+				graph.add((subject, ns.label, Literal(label)))
+			for link in row.get("links") or []:
+				graph.add((subject, ns.link, Literal(f"{link['fieldname']}->{link['target']}")))
+			for child in row.get("children") or []:
+				graph.add((subject, ns.child, Literal(f"{child['fieldname']}->{child['target']}")))
+		(root / f"{_safe_stem(module)}.ttl").write_text(graph.serialize(format="turtle"))
+
+
+def select_option_labels(doctype: str, fieldname: str, option: str) -> list[str]:
+	"""Arabic and English labels stored for one Select option. Empty if the graph has none."""
+	row = _doctype_index(_load_index()).get(doctype) or {}
+	for select in row.get("selects") or []:
+		if select.get("fieldname") != fieldname:
+			continue
+		for item in select.get("options") or []:
+			if item.get("value") == option:
+				return [label for label in (item.get("labels") or []) if label]
+	return []
+
+
+def list_modules(app: str | None = None) -> list[dict]:
+	index = _load_index()
+	modules = index.get("modules") or {}
+	if not modules:
+		grouped, _apps = _group_modules(_doctype_index(index))
+		modules = grouped
+	out = []
+	for name, row in sorted(modules.items()):
+		if app and (row.get("app") or "") != app:
+			continue
+		out.append({"module": name, "app": row.get("app") or "", "doctypes": len(row.get("doctypes") or [])})
+	return out
+
+
+def _scoped_doctypes(module: str | None, app: str | None) -> set[str] | None:
+	if not module and not app:
+		return None
+	index = _load_index()
+	names = set()
+	for doctype, row in _doctype_index(index).items():
+		if module and (row.get("module") or "") != module:
+			continue
+		if app and (row.get("app") or "") != app:
+			continue
+		names.add(doctype)
+	return names
 
 
 def _write_turtle(fields: dict) -> None:
@@ -225,8 +392,9 @@ def field_aliases(doctype: str) -> dict[str, list[str]]:
 	return out
 
 
-def lookup(query: str, doctype: str | None = None) -> list[dict]:
+def lookup(query: str, doctype: str | None = None, module: str | None = None, app: str | None = None) -> list[dict]:
 	fields = _field_index(_load_index())
+	allowed = _scoped_doctypes(module, app)
 	q = normalize_arabic(query)
 	q_stripped = strip_al(q)
 	hits = []
@@ -236,12 +404,16 @@ def lookup(query: str, doctype: str | None = None) -> list[dict]:
 		for row in fields.get(key, []):
 			if doctype and row.get("doctype") != doctype:
 				continue
+			if allowed is not None and row.get("doctype") not in allowed:
+				continue
 			hits.append(row)
 	if not hits and q:
 		for key, rows in fields.items():
 			if q in key or key in q or (q_stripped and (q_stripped in key or key in q_stripped)):
 				for row in rows:
 					if doctype and row.get("doctype") != doctype:
+						continue
+					if allowed is not None and row.get("doctype") not in allowed:
 						continue
 					hits.append(row)
 	seen = set()

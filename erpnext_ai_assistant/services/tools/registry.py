@@ -34,8 +34,8 @@ def publish_step(chat_id: str, step: dict):
 	)
 
 
-def tool_rdf_lookup(query: str, doctype: str | None = None) -> list[dict]:
-	return rdf_graph.lookup(query, doctype=doctype)
+def tool_rdf_lookup(query: str, doctype: str | None = None, module: str | None = None, app: str | None = None) -> list[dict]:
+	return rdf_graph.lookup(query, doctype=doctype, module=module, app=app)
 
 
 def tool_erp_query(

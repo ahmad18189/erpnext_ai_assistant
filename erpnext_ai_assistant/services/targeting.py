@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 
 import frappe
-from erpnext_ai_assistant.services.arabic import normalize_arabic
+from erpnext_ai_assistant.services.arabic import normalize_arabic, strip_al
 from erpnext_ai_assistant.services.doctype_catalog import match_catalog
 from erpnext_ai_assistant.services.schema import DENIED_DOCTYPES
 
@@ -50,7 +50,7 @@ _SYNONYMS = {
 	"leads": "CRM Lead",
 }
 _CREATE_WORDS = ("اعمل", "انشئ", "انشاء", "اضف", "اضيف", "سوي", "سو", "عمل", "create", "add", "make")
-_QUERY_WORDS = ("افتح", "اعرض", "قائمه", "ابحث", "list", "show", "open", "find")
+_QUERY_WORDS = ("افتح", "اعرض", "قائمه", "ابحث", "list", "show", "open", "find", "صدر", "تصدير", "اصدر", "export")
 _DETAIL_WORDS = (
 	"جدول",
 	"تفاصيل",
@@ -63,6 +63,7 @@ _DETAIL_WORDS = (
 	"details",
 	"breakdown",
 	"show me",
+	"register",
 )
 _COUNT_WORDS = ("كم", "عدد", "how many", "count", "عددها", "كم عدد")
 # A register question that also names a person or company should use the transaction, not the master.
@@ -142,7 +143,11 @@ def match_doctype(text: str | None) -> str | None:
 			if name not in _PARTY_MASTERS and score >= 4 and name not in DENIED_DOCTYPES:
 				return name
 	top_name, top_score = ranked[0]
-	if len(ranked) > 1 and ranked[1][1] >= top_score - 2:
+	second_is_party = len(ranked) > 1 and ranked[1][0] in _PARTY_MASTERS
+	# "attendance register for employees" names the register and the people. Keep the register.
+	if len(ranked) > 1 and ranked[1][1] >= top_score - 2 and not (
+		wants_details(text) and second_is_party and top_name not in _PARTY_MASTERS
+	):
 		return None
 	if top_name in DENIED_DOCTYPES:
 		return None
@@ -297,7 +302,11 @@ def _action(text: str) -> str | None:
 	if wants_details(text):
 		return "query"
 	# Count before create: "عمل" must not win inside "عملاء".
-	if any(_has(norm, word) for word in _COUNT_WORDS) or re.search(r"\bhow many\b|\bcount\b", norm):
+	# "do not count leave" is an exclusion, not a headcount.
+	count_hit = any(_has(norm, word) for word in _COUNT_WORDS) or bool(re.search(r"\bhow many\b|\bcount\b", norm))
+	if count_hit and re.search(r"don'?t\s+count|do\s+not\s+count|not\s+counting", norm):
+		count_hit = bool(re.search(r"\bhow many\b", norm) or any(_has(norm, word) for word in ("كم", "عدد", "عددها", "كم عدد")))
+	if count_hit:
 		return "count"
 	create = any(_has(head, word) for word in _CREATE_WORDS)
 	if question and not any(_has(norm, word) for word in ("انشئ", "اعمل", "اضف", "create", "add")):
@@ -315,62 +324,58 @@ def format_count(doctype: str, total: int, lang: str) -> str:
 	return f"You can see {total} {doctype} records."
 
 
+# Frappe list pages are limit_start + limit_page_length. Totals use count/sum, not the page.
+_LIST_PAGE = 15
+_GROUP_PAGE = 40
+
+
 def summarize_doctype(doctype: str, text: str | None, lang: str) -> str:
 	"""Plain-language rows for any DocType the user can read.
 
-	The shape comes from the DocType itself: a date for "this month", a Link
-	that has a companion name (employee / employee_name, customer / customer_name)
-	to group a long register, a short Select such as status, and a currency total.
+	Filtration is a Frappe filter list (between, is set, in, not in), including
+	a linked party such as Employee.user_id. Aggregation is count/sum with
+	group_by, so the totals cover every matching row. The lines are one page.
 	"""
 	from collections import Counter
 
 	meta = frappe.get_meta(doctype)
 	plan = _summary_plan(meta)
+	filters, note, problem, empty = _query_filters(doctype, plan, text, lang)
+	translations = _translations(lang)
+	label = _tr(doctype, lang, translations)
 	start, end = _month_window(text)
-	filters = {}
-	if start and end and plan["date"]:
-		filters[plan["date"]] = ["between", [str(start), str(end)]]
-	fields = ["name"]
-	for key in ("date", "group", "group_name", "select", "amount", "title"):
-		field = plan.get(key)
-		if field and field not in fields:
-			fields.append(field)
-	order = f"{plan['date']} asc" if plan["date"] else "modified desc"
+	if problem:
+		return problem
 	try:
-		rows = frappe.get_list(
-			doctype,
-			filters=filters,
-			fields=fields,
-			order_by=order,
-			limit_page_length=500,
-		)
+		total = 0 if empty else _sql_total(doctype, filters)
+		bounds = []
+		if not empty and not start and plan["date"]:
+			first, last = _sql_bounds(doctype, plan["date"], filters)
+			if first:
+				bounds = [{plan["date"]: first}, {plan["date"]: last}]
 	except frappe.PermissionError:
-		label = _tr(doctype, lang)
 		if lang == "ar":
 			return f"لا صلاحية لقراءة {label}."
 		return f"You cannot read {label}."
-	translations = _translations(lang)
-	label = _tr(doctype, lang, translations)
-	period = _period_label(start, end, rows, plan["date"], lang)
-	group_field = plan["group"]
-	# Group only when the DocType names a party (employee_name, customer_name). A master list stays a list.
-	group_it = bool(plan["group_name"]) and (len(rows) > 15 or (plan["select"] and len(rows) > 8))
+	period = _period_label(start, end, bounds, plan["date"], lang)
+	if note:
+		period = f"{period} ({note})".strip()
+	head = f"{label} {period}".strip() if period else label
+	if not total:
+		if lang == "ar":
+			return f"ما في سجلات {head} ظاهرة لك."
+		return f"No {head} records are visible to you."
+	group_it = bool(plan["group_name"]) and (total > _LIST_PAGE or (plan["select"] and total > 8))
 	if lang == "ar":
-		if not rows:
-			return f"ما في سجلات {label} ظاهرة لك {period}."
-		if group_it:
-			intro = f"{label} {period}. يظهر لك {len(rows)} سجلاً."
-		else:
-			intro = f"{label} {period}. يظهر لك {len(rows)} سجلاً."
+		intro = f"{head}. يظهر لك {total} سجلاً."
 	else:
-		if not rows:
-			return f"No {label} records are visible to you {period}."
-		intro = f"{label} {period}. You can see {len(rows)} records."
+		intro = f"{head}. You can see {total} records."
 	lines = [intro]
 	if group_it:
+		grouped = _sql_groups(doctype, meta, plan, filters)
 		buckets: dict[str, dict] = {}
-		for row in rows:
-			key = row.get(group_field) or "?"
+		for row in grouped:
+			key = row.get(plan["group"]) or "?"
 			bucket = buckets.setdefault(
 				key,
 				{"name": row.get(plan["group_name"]) or key, "counts": Counter(), "amount": 0.0, "n": 0},
@@ -378,34 +383,546 @@ def summarize_doctype(doctype: str, text: str | None, lang: str) -> str:
 			shown_name = row.get(plan["group_name"]) or bucket["name"]
 			if shown_name:
 				bucket["name"] = shown_name
-			bucket["n"] += 1
+			count = int(row.get("total") or 0)
+			bucket["n"] += count
 			if plan["select"]:
-				bucket["counts"][row.get(plan["select"]) or ""] += 1
-			if plan["amount"] is not None and row.get(plan["amount"]) not in (None, ""):
-				bucket["amount"] += float(row.get(plan["amount"]) or 0)
+				bucket["counts"][row.get(plan["select"]) or ""] += count
+			if plan["amount"] is not None and row.get("amount") not in (None, ""):
+				bucket["amount"] += float(row.get("amount") or 0)
 		ordered = sorted(buckets.values(), key=lambda item: str(item["name"] or ""))
-		shown = ordered[:40]
+		shown = ordered[:_GROUP_PAGE]
 		for bucket in shown:
 			lines.append("- " + _group_line(bucket, plan, lang, translations))
 		if len(ordered) > len(shown):
 			extra = len(ordered) - len(shown)
 			lines.append(
-				f"وهناك {extra} مجموعات أخرى في نفس الفترة." if lang == "ar" else f"And {extra} more groups in the same period."
+				f"وهناك {extra} مجموعات أخرى. الأرقام فوق تشمل كل السجلات، وهذه صفحة المجموعات."
+				if lang == "ar"
+				else f"And {extra} more groups. The total above includes every record; these lines are one page of groups."
 			)
 	else:
-		shown = rows[:15]
-		for row in shown:
-			lines.append("- " + _row_line(row, plan, meta, lang, translations))
-		if len(rows) > len(shown):
-			extra = len(rows) - len(shown)
-			lines.append(f"وهناك {extra} سجلات أخرى." if lang == "ar" else f"And {extra} more records.")
-	if len(rows) >= 500:
-		lines.append(
-			"هذه أول 500 سجلات فقط، والقائمة أطول من ذلك."
-			if lang == "ar"
-			else "This is the first 500 rows. The list is longer."
+		order = f"{plan['date']} asc" if plan["date"] else "modified desc"
+		fields = ["name"]
+		for key in ("date", "group", "group_name", "select", "amount", "title"):
+			field = plan.get(key)
+			if field and field not in fields and meta.has_field(field):
+				fields.append(field)
+		rows = frappe.get_list(
+			doctype,
+			filters=filters,
+			fields=fields,
+			order_by=order,
+			limit_start=0,
+			limit_page_length=_LIST_PAGE,
 		)
+		for row in rows:
+			lines.append("- " + _row_line(row, plan, meta, lang, translations))
+		if total > len(rows):
+			extra = total - len(rows)
+			lines.append(
+				f"وهناك {extra} سجلات أخرى في الصفحات التالية."
+				if lang == "ar"
+				else f"And {extra} more records on later pages."
+			)
 	return "\n".join(lines)
+
+
+def filtered_count(doctype: str, text: str | None, lang: str):
+	"""Permission-scoped count after the same Frappe filters as the register."""
+	meta = frappe.get_meta(doctype)
+	plan = _summary_plan(meta)
+	filters, note, problem, empty = _query_filters(doctype, plan, text, lang)
+	if problem or empty:
+		return 0, note, problem
+	try:
+		return _sql_total(doctype, filters), note, ""
+	except frappe.PermissionError:
+		if lang == "ar":
+			return 0, "", f"لا صلاحية لقراءة {_tr(doctype, lang)}."
+		return 0, "", f"You cannot read {_tr(doctype, lang)}."
+
+
+def _sql_total(doctype: str, filters: list) -> int:
+	rows = frappe.get_list(doctype, fields=["count(name) as total"], filters=filters, limit_page_length=0)
+	if not rows:
+		return 0
+	return int(rows[0].get("total") or 0)
+
+
+def _sql_bounds(doctype: str, date_field: str, filters: list):
+	rows = frappe.get_list(
+		doctype,
+		fields=[f"min({date_field}) as first_on", f"max({date_field}) as last_on"],
+		filters=filters,
+		limit_page_length=0,
+	)
+	if not rows:
+		return None, None
+	return rows[0].get("first_on"), rows[0].get("last_on")
+
+
+def _sql_groups(doctype: str, meta, plan: dict, filters: list) -> list:
+	columns = []
+	group_cols = []
+	for field in (plan.get("group"), plan.get("group_name"), plan.get("select")):
+		if field and meta.has_field(field) and field not in columns:
+			columns.append(field)
+			group_cols.append(field)
+	if not group_cols:
+		return []
+	columns.append("count(name) as total")
+	if plan.get("amount") and meta.has_field(plan["amount"]):
+		columns.append(f"sum({plan['amount']}) as amount")
+	order = group_cols[1] if plan.get("group_name") in group_cols else group_cols[0]
+	return frappe.get_list(
+		doctype,
+		fields=columns,
+		filters=filters,
+		group_by=", ".join(group_cols),
+		order_by=f"{order} asc",
+		limit_page_length=0,
+	)
+
+
+_ROLE_WORD = r"(?:صلاحيه|صلاحيات|دور|role|permission)"
+_NEG_HAVE = r"(?:ليس لديهم|ليس لديه|بدون|without|do not have|don't have|not have)"
+_HAVE = r"(?:لديهم|لديه|who have|with)"
+_NOT_A_TARGET = {"صلاحيه", "صلاحيات", "دور", "role", "permission"}
+
+
+# استثتي is the usual misspelling of استثني. ة is already ه after normalize_arabic.
+_EXCLUDE = (
+	r"(?:لا\s*تحتسب|لا\s*تحسب|بدون\s*احتساب|باستثنا\w*|ما\s*عدا|استثن\w*|استثت\w*"
+	r"|don'?t\s+count|do\s+not\s+count|excluding|exclude|except|not\s+counting|other\s+than)"
+)
+
+
+def _query_filters(doctype: str, plan: dict, text: str | None, lang: str):
+	"""Frappe filter list: the date window, the linked party, then a status the user told us to skip."""
+	filters = []
+	start, end = _month_window(text)
+	if start and end and plan.get("date"):
+		filters.append([doctype, plan["date"], "between", [str(start), str(end)]])
+	extra, note, problem, empty = _related_filters(doctype, plan, text, lang)
+	if problem or empty:
+		return filters + extra, note, problem, empty
+	excluded, exclude_note = _select_exclusions(doctype, plan, text, lang)
+	if excluded and plan.get("select"):
+		filters.append([doctype, plan["select"], "not in", excluded])
+	covered, covered_note = _covered_day_filters(doctype, plan, text, filters, lang)
+	filters.extend(covered)
+	notes = [part for part in (note, exclude_note, covered_note) if part]
+	joiner = "، " if lang == "ar" else ", "
+	return filters + extra, joiner.join(notes), "", False
+
+
+def _select_exclusions(doctype: str, plan: dict, text: str | None, lang: str):
+	"""Match "لا تحتسب الإجازة" or "do not count cancelled" to a Select option on this DocType."""
+	field = plan.get("select")
+	df = frappe.get_meta(doctype).get_field(field) if field else None
+	options = [line.strip() for line in ((df.options if df else "") or "").split("\n") if line.strip()]
+	if not options:
+		return [], ""
+	phrases = _exclusion_phrases(text)
+	if not phrases:
+		return [], ""
+	book = _translations("ar")
+	try:
+		from erpnext_ai_assistant.services.rdf.graph import select_option_labels
+	except Exception:
+		select_option_labels = None
+	matched = []
+	for option in options:
+		extra = select_option_labels(doctype, field, option) if select_option_labels else []
+		if any(_option_in_phrase(option, phrase, book, extra) for phrase in phrases):
+			matched.append(option)
+	if not matched:
+		return [], ""
+	labels = [_tr(option, lang, _translations(lang)) or option for option in matched]
+	if lang == "ar":
+		return matched, "بدون احتساب " + " و ".join(labels)
+	return matched, "not counting " + " and ".join(labels)
+
+
+def _exclusion_phrases(text: str | None) -> list[str]:
+	norm = normalize_arabic(text)
+	if not norm:
+		return []
+	phrases = []
+	for match in re.finditer(rf"{_EXCLUDE}\s+(.+)", norm):
+		phrases.append(" ".join(match.group(1).split()[:8]))
+	return phrases
+
+
+def _day_concepts(phrases: list[str]) -> list[str]:
+	"""The thing after 'أيام' or 'days': إجازات، leave. Not the whole tail of the sentence."""
+	found = []
+	for phrase in phrases:
+		for match in re.finditer(r"(?:ايام|يوم|days(?:\s+of)?)\s+([^\s،,.]+)", phrase):
+			token = strip_al(match.group(1))
+			if len(token) >= 4 and token not in found:
+				found.append(token)
+		for match in re.finditer(r"\b([a-z]{4,})\s+days\b", phrase):
+			token = match.group(1)
+			if token not in found and token not in ("these", "those", "other"):
+				found.append(token)
+	return found
+
+
+def _covered_day_filters(doctype: str, plan: dict, text: str | None, filters: list, lang: str):
+	"""Drop register rows whose date sits in an approved leave (or similar) for that party.
+
+	Employee.user_id is the user, and the role lives on that user. A leave day is
+	the On Leave status, handled above, and also a date inside a submitted
+	document such as Leave Application. Allocation and ledger rows are balances,
+	not days off, so they are not used here.
+	"""
+	concepts = _day_concepts(_exclusion_phrases(text))
+	date_field = plan.get("date")
+	party_field = plan.get("group")
+	if not concepts or not date_field or not party_field:
+		return [], ""
+	party_df = frappe.get_meta(doctype).get_field(party_field)
+	if not party_df or party_df.fieldtype != "Link" or not party_df.options:
+		return [], ""
+	start, end = _filter_bounds(doctype, date_field, filters)
+	if not start or not end:
+		return [], ""
+	spans = [row for row in _span_doctypes(party_df.options) if _span_matches(row, concepts)]
+	if not spans:
+		return [], ""
+	party_names = _filter_in(doctype, party_field, filters)
+	drop: list[str] = []
+	used = ""
+	for span in spans:
+		span_filters: dict = {"docstatus": 1, "from_date": ["<=", str(end)], "to_date": [">=", str(start)]}
+		if party_names is not None:
+			if not party_names:
+				continue
+			span_filters[span["link"]] = ["in", party_names]
+		status = frappe.get_meta(span["doctype"]).get_field("status")
+		options = [line.strip() for line in ((status.options if status else "") or "").split("\n") if line.strip()]
+		if "Approved" in options:
+			span_filters["status"] = "Approved"
+		ranges = frappe.get_all(
+			span["doctype"],
+			filters=span_filters,
+			fields=[span["link"], "from_date", "to_date"],
+			limit_page_length=0,
+		)
+		if not ranges:
+			continue
+		by_party: dict[str, list] = {}
+		for rng in ranges:
+			by_party.setdefault(rng.get(span["link"]), []).append((rng.get("from_date"), rng.get("to_date")))
+		rows = frappe.get_list(
+			doctype,
+			filters=filters,
+			fields=["name", party_field, date_field],
+			limit_page_length=0,
+		)
+		for row in rows:
+			day = frappe.utils.getdate(row.get(date_field)) if row.get(date_field) else None
+			for left, right in by_party.get(row.get(party_field)) or []:
+				if left and right and day and frappe.utils.getdate(left) <= day <= frappe.utils.getdate(right):
+					drop.append(row.get("name"))
+					break
+		if not used:
+			used = span["doctype"]
+	drop = list(dict.fromkeys(name for name in drop if name))
+	if not drop:
+		return [], ""
+	label = strip_al(_tr(used, lang)) or used
+	if lang == "ar":
+		return [[doctype, "name", "not in", drop]], f"باستثناء أيام {label}"
+	return [[doctype, "name", "not in", drop]], f"excluding days covered by {label}"
+
+
+def _filter_bounds(doctype: str, field: str, filters: list):
+	for item in filters:
+		if len(item) >= 4 and item[0] == doctype and item[1] == field and item[2] == "between":
+			window = item[3] or []
+			if len(window) == 2:
+				return window[0], window[1]
+	return None, None
+
+
+def _filter_in(doctype: str, field: str, filters: list):
+	for item in filters:
+		if len(item) >= 4 and item[0] == doctype and item[1] == field and item[2] == "in":
+			return list(item[3] or [])
+	return None
+
+
+def _span_doctypes(party: str) -> list[dict]:
+	"""Submitted from/to documents linked to this party. Not allocations or ledgers."""
+	key = f"erp_ai_span_v1:{party}"
+	cached = frappe.cache().get_value(key)
+	if isinstance(cached, list):
+		return cached
+	rows = frappe.db.sql(
+		"""
+		select a.parent as doctype, c.fieldname as link_field
+		from `tabDocField` a
+		join `tabDocField` b on b.parent = a.parent and b.fieldname = 'to_date' and b.fieldtype = 'Date'
+		join `tabDocField` c on c.parent = a.parent and c.fieldtype = 'Link' and c.options = %s
+		join `tabDocType` d on d.name = a.parent and ifnull(d.istable, 0) = 0 and ifnull(d.issingle, 0) = 0
+		where a.fieldname = 'from_date' and a.fieldtype = 'Date'
+		""",
+		(party,),
+		as_dict=True,
+	)
+	book = _translations("ar")
+	out = []
+	for row in rows:
+		name = row.doctype
+		if any(word in (name or "").lower() for word in ("allocation", "ledger", "withholding")):
+			continue
+		meta = frappe.get_meta(name)
+		if not int(meta.get("is_submittable") or 0):
+			continue
+		labels = [label for label in (name, book.get(name) or "") if label]
+		out.append({"doctype": name, "link": row.link_field, "labels": labels})
+	frappe.cache().set_value(key, out, expires_in_sec=3600)
+	return out
+
+
+def _span_matches(span: dict, concepts: list[str]) -> bool:
+	phrase = " ".join(span.get("labels") or [])
+	return any(_option_in_phrase(concept, phrase, {}) for concept in concepts)
+
+
+def _option_in_phrase(option: str, phrase: str, book: dict, extra_labels: list | None = None) -> bool:
+	phrase_n = normalize_arabic(phrase)
+	labels = [option, book.get(option) or "", book.get(option.upper()) or "", book.get(option.lower()) or ""]
+	labels.extend(extra_labels or [])
+	tokens = [strip_al(token) for token in phrase_n.split()]
+	tokens = [token for token in tokens if len(token) >= 4]
+	for label in labels:
+		norm = normalize_arabic(label)
+		if not norm:
+			continue
+		bare = strip_al(norm)
+		if len(bare) >= 4 and bare in phrase_n:
+			return True
+		for word in norm.split():
+			word = strip_al(word)
+			if len(word) < 4:
+				continue
+			if word in phrase_n:
+				return True
+			for token in tokens:
+				if word.startswith(token[:3]) and token.startswith(word[:3]) and len(word) >= 4 and len(token) >= 4:
+					return True
+	return False
+
+
+def _related_filters(doctype: str, plan: dict, text: str | None, lang: str):
+	"""Turn "has a user and not the CEO role" into Frappe filters before the query.
+
+	The party is resolved with is/set and not in, then the register is filtered
+	with employee in (...). Aggregation therefore sees every matching row, not
+	one page filtered afterwards.
+	"""
+	constraints = _related_constraints(text)
+	if not constraints:
+		return [], "", "", False
+	for item in constraints:
+		if item["kind"] == "role":
+			item["role"] = _role_named(item["token"])
+			item["target"] = "User"
+			if not item["role"]:
+				if lang == "ar":
+					return [], "", f"ما لقيت صلاحية باسم {item['token']}.", False
+				return [], "", f"No role is named {item['token']}.", False
+		else:
+			item["target"] = _doctype_named(item["token"])
+			if not item["target"]:
+				if lang == "ar":
+					return [], "", f"ما لقيت مستند يطابق «{item['token']}» عشان أطبق الشرط.", False
+				return [], "", f"No DocType matches “{item['token']}” for that filter.", False
+	anchor, row_field = _constraint_anchor(doctype, plan, constraints)
+	if not anchor:
+		targets = "، ".join(dict.fromkeys(item["target"] for item in constraints))
+		if lang == "ar":
+			return [], "", f"ما في ربط بين {doctype} و {targets} يخليني أطبق هذا الشرط.", False
+		return [], "", f"There is no link from {doctype} to {targets} for that filter.", False
+	clauses = []
+	try:
+		for item in constraints:
+			df = _pick_link(frappe.get_meta(anchor), item["target"])
+			if not df:
+				if lang == "ar":
+					return [], "", f"ما في حقل على {anchor} يربط بـ {item['target']}.", False
+				return [], "", f"{anchor} has no link to {item['target']}.", False
+			if item["kind"] == "link":
+				clauses.append([anchor, df.fieldname, "is", "not set" if item["negate"] else "set"])
+				continue
+			holders = frappe.get_list(
+				"Has Role",
+				filters={"parenttype": "User", "role": item["role"]},
+				pluck="parent",
+				limit_page_length=0,
+			)
+			if item["negate"]:
+				if holders:
+					clauses.append([anchor, df.fieldname, "not in", holders])
+			elif holders:
+				clauses.append([anchor, df.fieldname, "in", holders])
+			else:
+				return [], _constraint_note(constraints, lang), "", True
+		if row_field == "name":
+			return clauses, _constraint_note(constraints, lang), "", False
+		names = frappe.get_list(anchor, filters=clauses, pluck="name", limit_page_length=0)
+	except frappe.PermissionError:
+		if lang == "ar":
+			return [], "", f"لا صلاحية لقراءة {anchor} لتطبيق الشرط.", False
+		return [], "", f"You cannot read {anchor} to apply that filter.", False
+	if not names:
+		return [], _constraint_note(constraints, lang), "", True
+	return [[doctype, row_field, "in", names]], _constraint_note(constraints, lang), "", False
+
+
+def _related_constraints(text: str | None) -> list[dict]:
+	norm = normalize_arabic(text)
+	if not norm:
+		return []
+	found = []
+	spans: list[tuple[int, int]] = []
+
+	def covered(start: int) -> bool:
+		return any(left <= start < right for left, right in spans)
+
+	article = r"(?:(?:a|an|the)\s+)?"
+	# "do not have the CEO role" puts the role name before the word role.
+	for match in re.finditer(rf"{_NEG_HAVE}\s+{article}([^\s،,.]+)\s+{_ROLE_WORD}\b", norm):
+		found.append({"kind": "role", "negate": True, "token": match.group(1)})
+		spans.append(match.span())
+	for match in re.finditer(rf"{_HAVE}\s+{article}([^\s،,.]+)\s+{_ROLE_WORD}\b", norm):
+		if covered(match.start()):
+			continue
+		found.append({"kind": "role", "negate": False, "token": match.group(1)})
+		spans.append(match.span())
+	for match in re.finditer(rf"{_NEG_HAVE}\s+{article}{_ROLE_WORD}\s+([^\s،,.]+)", norm):
+		found.append({"kind": "role", "negate": True, "token": match.group(1)})
+		spans.append(match.span())
+	for match in re.finditer(rf"{_HAVE}\s+{article}{_ROLE_WORD}\s+([^\s،,.]+)", norm):
+		if covered(match.start()):
+			continue
+		found.append({"kind": "role", "negate": False, "token": match.group(1)})
+		spans.append(match.span())
+	for match in re.finditer(rf"{_NEG_HAVE}\s+{article}([^\s،,.]+)", norm):
+		if covered(match.start()):
+			continue
+		token = match.group(1)
+		if token in _NOT_A_TARGET:
+			continue
+		found.append({"kind": "link", "negate": True, "token": token})
+		spans.append(match.span())
+	for match in re.finditer(rf"{_HAVE}\s+{article}([^\s،,.]+)", norm):
+		if covered(match.start()):
+			continue
+		before = norm[max(0, match.start() - 5) : match.start()]
+		if before.endswith("ليس ") or before.rstrip().endswith("ليس"):
+			continue
+		token = match.group(1)
+		if token in _NOT_A_TARGET:
+			continue
+		found.append({"kind": "link", "negate": False, "token": token})
+	return found
+
+
+def _constraint_anchor(doctype: str, plan: dict, constraints: list[dict]):
+	targets = [item["target"] for item in constraints if item.get("target")]
+
+	def can(meta) -> bool:
+		return all(_pick_link(meta, target) for target in targets)
+
+	if can(frappe.get_meta(doctype)):
+		return doctype, "name"
+	field = plan.get("group")
+	linked = frappe.get_meta(doctype).get_field(field) if field else None
+	if linked and linked.fieldtype == "Link" and linked.options and can(frappe.get_meta(linked.options)):
+		return linked.options, field
+	return None, None
+
+
+def _pick_link(meta, target: str):
+	links = [df for df in meta.fields if df.fieldtype == "Link" and df.options == target and df.fieldname]
+	if not links:
+		return None
+	preferred = [df for df in links if df.fieldname in (f"{target.lower()}_id", target.lower(), "user_id" if target == "User" else "")]
+	if preferred:
+		return preferred[0]
+	plain = [df for df in links if "approver" not in (df.fieldname or "")]
+	return (plain or links)[0]
+
+
+def _doctype_named(token: str) -> str | None:
+	"""DocType the word names, including ones the chat catalog refuses to list."""
+	raw = (token or "").strip()
+	wanted = strip_al(raw)
+	if not wanted:
+		return None
+	real = frappe.db.get_value("DocType", raw, ["name", "istable"], as_dict=True)
+	if real and not real.istable:
+		return real.name
+	if wanted.isascii():
+		found = [
+			name
+			for name in frappe.get_all("DocType", filters={"istable": 0, "name": ["like", wanted]}, pluck="name", limit_page_length=8)
+			if str(name).lower() == wanted.lower()
+		]
+		if len(found) == 1:
+			return found[0]
+	matches = []
+	for source, translated in _translations("ar").items():
+		if strip_al(translated) != wanted and strip_al(source) != wanted:
+			continue
+		if not source or " " in source or len(source) > 80:
+			continue
+		real = frappe.db.get_value("DocType", source, ["name", "istable"], as_dict=True)
+		if not real or real.istable or real.name in matches:
+			continue
+		matches.append(real.name)
+	if len(matches) == 1:
+		return matches[0]
+	titled = [name for name in matches if strip_al(_tr(name, "ar")) == wanted or name.lower() == wanted.lower()]
+	if len(titled) == 1:
+		return titled[0]
+	return None
+
+
+def _role_named(token: str) -> str | None:
+	wanted = (token or "").strip().lower()
+	if not wanted:
+		return None
+	try:
+		names = frappe.get_all("Role", filters={"disabled": 0}, pluck="name", limit_page_length=300)
+	except frappe.PermissionError:
+		return None
+	exact = [name for name in names if str(name).lower() == wanted]
+	return exact[0] if len(exact) == 1 else None
+
+
+def _constraint_note(constraints: list[dict], lang: str) -> str:
+	parts = []
+	ordered = [item for item in constraints if item["kind"] == "link"] + [item for item in constraints if item["kind"] == "role"]
+	for item in ordered:
+		if item["kind"] == "link":
+			label = strip_al(_tr(item["target"], lang)) or item["target"]
+			if lang == "ar":
+				parts.append(f"ليس لديهم {label}" if item["negate"] else f"لديهم {label}")
+			else:
+				parts.append(f"without a {label}" if item["negate"] else f"with a {label}")
+		else:
+			role = item["role"]
+			if lang == "ar":
+				parts.append(f"بدون صلاحية {role}" if item["negate"] else f"لديهم صلاحية {role}")
+			else:
+				parts.append(f"without the {role} role" if item["negate"] else f"with the {role} role")
+	joiner = "، " if lang == "ar" else ", "
+	return joiner.join(parts)
 
 
 def _summary_plan(meta) -> dict:
@@ -535,7 +1052,9 @@ def _money(value) -> str:
 
 def _translations(lang: str) -> dict:
 	try:
-		return frappe.translate.get_all_translations(lang) or {}
+		from frappe.translate import get_all_translations
+
+		return get_all_translations(lang) or {}
 	except Exception:
 		return {}
 
@@ -561,7 +1080,9 @@ def _period_label(start, end, rows, date_field: str | None, lang: str) -> str:
 		if lang == "ar":
 			return f"لشهر {_MONTHS_AR[start.month - 1]} {start.year}"
 		return f"for {start.strftime('%B %Y')}"
-	dates = [row.get(date_field) for row in rows if date_field and row.get(date_field)]
+	if not date_field:
+		return ""
+	dates = [row.get(date_field) for row in rows if row.get(date_field)]
 	if not dates:
 		return "في الفترة المطلوبة" if lang == "ar" else "for the requested period"
 	first, last = min(dates), max(dates)

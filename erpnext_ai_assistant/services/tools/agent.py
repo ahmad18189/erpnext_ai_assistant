@@ -20,6 +20,7 @@ LABELS = {
 	"count_records": ("عدد السجلات", "Count records"),
 	"list_doctypes": ("أنواع المستندات", "List DocTypes"),
 	"list_installed_apps": ("التطبيقات المثبتة", "Installed apps"),
+	"list_modules": ("وحدات التطبيق", "App modules"),
 	"lookup_field": ("مطابقة الحقل", "Match field"),
 	"search_knowledge": ("استرجاع المعرفة", "Search knowledge"),
 	"search_manual": ("دليل ERPNext", "ERPNext manual"),
@@ -101,13 +102,26 @@ TOOL_SPECS = [
 	{
 		"type": "function",
 		"function": {
+			"name": "list_modules",
+			"description": "List modules from the site RDF graphs, optionally for one installed app.",
+			"parameters": {
+				"type": "object",
+				"properties": {"app": {"type": "string"}},
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
 			"name": "lookup_field",
-			"description": "Map a label, including Arabic, to a real fieldname before filtering.",
+			"description": "Map a label, including Arabic, to a real fieldname before filtering. Pass module or app to stay inside that RDF graph.",
 			"parameters": {
 				"type": "object",
 				"properties": {
 					"query": {"type": "string"},
 					"doctype": {"type": "string"},
+					"module": {"type": "string"},
+					"app": {"type": "string"},
 				},
 				"required": ["query"],
 			},
@@ -232,42 +246,50 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 		if name == "describe_doctype":
 			return _compact_schema(args.get("doctype") or "")
 		if name == "query_records":
-			filters = _parse_filters(args.get("filters"))
-			filters = _resolve_filter_keys(args.get("doctype") or "", filters, lang)
-			if filters.get("_error"):
+			filters = _ready_filters(args.get("doctype") or "", args.get("filters"), lang)
+			if isinstance(filters, dict) and filters.get("_error"):
 				return {"error": filters["_error"], "candidates": filters.get("_candidates") or []}
+			page_length = min(int(args.get("limit") or 20), 50)
 			rows = tools.tool_erp_query(
 				args.get("doctype") or "",
-				filters=filters if isinstance(filters, dict) else {},
+				filters=filters,
 				fields=args.get("fields") or ["name"],
-				limit=min(int(args.get("limit") or 20), 50),
+				limit=page_length,
 			)
-			page = rows[:20]
-			capped = len(rows) >= min(int(args.get("limit") or 20), 50)
+			page = rows[:page_length]
+			counted = tools.tool_erp_count(args.get("doctype") or "", filters=filters)
 			return {
 				"doctype": args.get("doctype"),
 				"returned_count": len(page),
-				"capped": capped,
-				"note": "returned_count is this page, not the total number of records.",
+				"total": counted.get("total"),
+				"limit_start": 0,
+				"limit_page_length": page_length,
+				"capped": int(counted.get("total") or 0) > len(page),
+				"note": "rows are one page (limit_page_length). total is the filtered count of every matching row.",
 				"rows": page,
 			}
 		if name == "count_records":
-			filters = _parse_filters(args.get("filters"))
-			filters = _resolve_filter_keys(args.get("doctype") or "", filters, lang)
-			if filters.get("_error"):
+			filters = _ready_filters(args.get("doctype") or "", args.get("filters"), lang)
+			if isinstance(filters, dict) and filters.get("_error"):
 				return {"error": filters["_error"], "candidates": filters.get("_candidates") or []}
-			return tools.tool_erp_count(
-				args.get("doctype") or "",
-				filters=filters if isinstance(filters, dict) else {},
-			)
+			return tools.tool_erp_count(args.get("doctype") or "", filters=filters)
 		if name == "list_doctypes":
 			from erpnext_ai_assistant.services.doctype_catalog import search_catalog
 
 			return {"doctypes": search_catalog(args.get("query"), limit=20)}
 		if name == "list_installed_apps":
 			return {"apps": tools.tool_list_installed_apps(args.get("query"))}
+		if name == "list_modules":
+			from erpnext_ai_assistant.services.rdf.graph import list_modules
+
+			return {"modules": list_modules(args.get("app") or None)}
 		if name == "lookup_field":
-			hits = tools.tool_rdf_lookup(args.get("query") or "", doctype=args.get("doctype"))[:12]
+			hits = tools.tool_rdf_lookup(
+				args.get("query") or "",
+				doctype=args.get("doctype"),
+				module=args.get("module"),
+				app=args.get("app"),
+			)[:12]
 			if len(hits) == 1:
 				return {"fieldname": hits[0].get("fieldname"), "doctype": hits[0].get("doctype"), "hits": hits}
 			return {"candidates": hits, "hits": hits}
@@ -299,14 +321,26 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 		return {"error": str(exc)}
 
 
-def _parse_filters(raw) -> dict:
+def _parse_filters(raw):
+	"""A Frappe filter dict or a list of [doctype, field, operator, value]."""
 	filters = raw or {}
 	if isinstance(filters, str):
 		try:
 			filters = json.loads(filters)
 		except Exception:
 			filters = {}
-	return filters if isinstance(filters, dict) else {}
+	if isinstance(filters, dict):
+		return filters
+	if isinstance(filters, list):
+		return filters
+	return {}
+
+
+def _ready_filters(doctype: str, raw, lang: str):
+	filters = _parse_filters(raw)
+	if isinstance(filters, dict):
+		return _resolve_filter_keys(doctype, filters, lang)
+	return filters
 
 
 def _resolve_filter_keys(doctype: str, filters: dict, lang: str) -> dict:
@@ -412,6 +446,7 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 	"""Create, count, or list the DocType the Arabic (or everyday) wording actually names."""
 	from erpnext_ai_assistant.services.schema import extract_field_values
 	from erpnext_ai_assistant.services.targeting import (
+		filtered_count,
 		format_count,
 		interpret,
 		summarize_doctype,
@@ -439,33 +474,34 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 	if planned["action"] == "count":
 		step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"count {doctype}", detail_ar=f"عدد {doctype}")
 		step("tool-1", "عدد السجلات", "Count records", "count_records", "running")
-		result = dispatch(
-			"count_records",
-			{"doctype": doctype},
-			chat_id,
-			lang,
-			user_text=user,
-		)
-		detail = _detail("count_records", result, lang)
-		step("tool-1", "عدد السجلات", "Count records", "count_records", "done", detail=detail, detail_ar=detail)
-		if result.get("error"):
-			return {
-				"answer": str(result["error"]),
-				"pending": None,
-				"signals": _error_signal("count_records", doctype, result),
-			}
+		total, note, problem = filtered_count(doctype, user, lang)
+		step("tool-1", "عدد السجلات", "Count records", "count_records", "done", detail=str(total), detail_ar=str(total))
+		if problem:
+			return {"answer": problem, "pending": None, "signals": []}
+		answer = format_count(doctype, int(total or 0), lang)
+		if note:
+			answer = answer[:-1] + f" ({note})."
 		return {
-			"answer": format_count(doctype, int(result.get("total") or 0), lang),
+			"answer": answer,
 			"pending": None,
 			"signals": [{"kind": "had_data", "action": "count_records", "doctype": doctype}],
 		}
 	step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"query {doctype}", detail_ar=f"استعلام {doctype}")
 	step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "running")
 	answer = summarize_doctype(doctype, user, lang)
+	files = []
+	from erpnext_ai_assistant.services.sheets import build_export, sheet_kinds, wants_children
+
+	if sheet_kinds(user) or wants_children(user):
+		exported = build_export(doctype, user, lang)
+		if exported.get("note"):
+			answer = answer + "\n" + exported["note"]
+		files = exported.get("files") or []
 	step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "done", detail=doctype, detail_ar=doctype)
 	return {
 		"answer": answer,
 		"pending": None,
+		"files": files,
 		"signals": [{"kind": "had_data", "action": "query_records", "doctype": doctype}],
 	}
 
@@ -606,6 +642,12 @@ def run_tool_loop(
 		"If the user asks for a register, table, list, or details (سجل، جدول، اعطيني، يظهر، تفاصيل), "
 		"call query_records and describe the rows in plain language, using field labels. Do not answer those with only a count. "
 		"A register that also names a person or company uses that transaction DocType, not the master list. "
+		"An employee reaches a user through user_id. A role (صلاحية) is a Has Role row on that user; match the Role name exactly, so CEO is not Deputy CEO. "
+		"Apply has-user and has-role or lacks-role before you total the rows. "
+		"Leave days (أيام الإجازة / on leave) are the On Leave status and any date inside an approved Leave Application for that employee. Exclude both before you count or group. "
+		"query_records returns one page. Its total is the filtered count of every row, from count/group, not the length of the page. "
+		"If the user says not to count a status (إجازة / leave, ملغاة / cancelled), filter that status out with not in before you count or group. "
+		"Use list_modules and lookup_field for labels. Pass module or app so the match stays in that module graph. "
 		+ manual_rule
 		+ "Use describe_doctype for the DocType the user named, not a similar one. "
 		"lookup_field and filter labels bind a fieldname only when exactly one readable hit comes back. "
