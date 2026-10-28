@@ -45,6 +45,23 @@
     return "";
   }
 
+  // "/desk/sales-invoice?status=Overdue": the router takes the path; list filters go in route_options.
+  function routeTo(path) {
+    var at = path.indexOf("?");
+    var bits = (at >= 0 ? path.slice(0, at) : path).split("/").filter(Boolean);
+    // Frappe v15 routes have no /app or /desk segment of their own.
+    if (bits[0] === "app" || bits[0] === "desk") bits.shift();
+    if (!bits.length) return;
+    if (at >= 0) {
+      var options = {};
+      new URLSearchParams(path.slice(at + 1)).forEach(function (value, key) {
+        options[key] = value;
+      });
+      frappe.route_options = options;
+    }
+    frappe.set_route.apply(frappe, bits);
+  }
+
   function openRecordButton(link) {
     var onCrm = (location.pathname || "").indexOf("/crm") === 0;
     var path = safeLocalPath((onCrm && link.crm_route) || link.desk_route || "");
@@ -69,9 +86,7 @@
       }
       if (window.frappe && frappe.set_route && (path.indexOf("/app/") === 0 || path.indexOf("/desk/") === 0)) {
         ev.preventDefault();
-        var bits = path.split("/").filter(Boolean);
-        if (bits[0] === "app" || bits[0] === "desk") bits.shift();
-        if (bits.length) frappe.set_route.apply(frappe, bits);
+        routeTo(path);
       }
     });
     return a;
@@ -81,4 +96,5 @@
   A.pathMatches = pathMatches;
   A.safeLocalPath = safeLocalPath;
   A.openRecordButton = openRecordButton;
+  A.routeTo = routeTo;
 })();

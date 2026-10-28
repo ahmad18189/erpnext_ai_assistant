@@ -24,23 +24,50 @@ Guests stay out. Each person sees the records their role already allows.
 
 *The English panel, ready to ask for a chart. Switch to Arabic with one button.*
 
+## See it work
+
+Ask a question, get a number you can check, then one click to see the records, a chart, or the same list in Desk.
+
+| 1. Ask | 2. Show the list | 3. Chart |
+|---|---|---|
+| <img src="docs/images/assistant-count-en.png" alt="The assistant answers how many overdue sales invoices with 4, and offers Show the list, Chart, and Export to Excel buttons" width="260"> | <img src="docs/images/assistant-list-en.png" alt="The four overdue invoices in a table with number, customer, date, total, and status, an Open the Sales Invoice list button, and more next steps" width="260"> | <img src="docs/images/assistant-chart-en.png" alt="A pie chart of the overdue invoices by customer with amounts in the legend" width="260"> |
+
+**4. Open the same list in Desk.** "Open the Sales Invoice list" lands on the filtered list, with the conversation still open beside it:
+
+<img src="docs/images/assistant-open-list-en.png" alt="ERPNext Sales Invoice list filtered to Overdue, opened from the assistant panel" width="720">
+
+**In Arabic.** The panel opens in the user's ERPNext language. "كم عدد الفواتير المتأخرة" then "عرض القائمة":
+
+<img src="docs/images/assistant-list-ar.png" alt="The Arabic panel listing the four overdue invoices after the Show the list button" width="260">
+
+*Screenshots from a demo company on Frappe 16.53 / ERPNext 16.52.*
+
 ## What you can do today
 
 | You say | What you get |
 |---|---|
-| How many customers? / كم عدد العملاء | The count your login is allowed to see. |
-| Show a chart of leads by status | A chart, plus the numbers written out. |
-| Open the import tool / افتح أداة الاستيراد | A button that opens Data Import on this site. |
-| Create a task for tomorrow | A draft. You read it and press Approve. |
-| Here is my spreadsheet | A check of the columns, then an import after you approve. |
-| What can you do? / ماذا تستطيع | A short list of these jobs. |
+| كم عدد الفواتير المتأخرة / How many overdue invoices? | "4 (overdue)", the count your login can see, with buttons: **Show the list · Chart · Export to Excel** |
+| Show the list (one click) | The invoices themselves: number, customer, date, total, status, and a button that opens the same filtered list in Desk |
+| How many submitted sales orders? | Status words count: submitted, draft, cancelled, overdue, paid, unpaid, open, completed, in Arabic and English |
+| Show a chart of sales invoices by customer | A chart grouped by the field you named, with the numbers written out |
+| Create a quotation for Delta Systems for 2 laptops and 1 printer | A ready card: customer, item lines with prices, total, and company, currency and price list filled in for you. Approve saves it |
+| أنشئ عرض سعر لشركة الأفق لعدد 3 كراسي مكتب | The same in Arabic, Arabic plurals included |
+| Submit the draft invoice for مؤسسة النور | A card for that real invoice. If there is no matching draft, it says so instead of guessing |
+| Show them / اعرضها / which one is biggest? | Follow-ups keep the previous question's filters |
+| cancel / إلغاء | Drops a half-finished draft |
+| Open the import tool / افتح أداة الاستيراد | A button that opens Data Import on this site |
+| Here is my spreadsheet | A check of the columns, then an import after you approve |
 
 Today the assistant can:
 
-- Answer a work question about this site. Ask in Arabic and the reply comes back in Arabic.
-- Count and list records your role can read, and draw a simple chart from them.
+- Answer a work question about this site. Ask in Arabic and the reply comes back in Arabic. The panel itself opens in your ERPNext language.
+- Count and list records your role can read, understand status words and "for <customer>", and draw a chart grouped the way you ask.
+- Offer one-click next steps after a count: the records themselves, a chart, or an Excel file.
+- Prepare a quotation or order from one sentence. The customer and items come from your words; company, currency, price list, series and exchange rates are filled the way the Desk form fills them. Delivery dates are asked for, never guessed.
+- Change, submit, cancel, or delete a record through a card that names the real record, shows before → after, and checks it is in the right state and that you may change it.
+- Keep the thread: "show them", "export them", "which one is biggest" continue the last question.
+- Show its work while it runs: the steps appear live under your question.
 - Open a Desk page, such as Data Import.
-- Fill a new record or a change one field at a time, then wait for Approve.
 - Read a spreadsheet, line the headers up, and start the import after you approve.
 - Explain a how-to step from the ERPNext manual when ERPNext is installed.
 - Remember a fact about you after you tick confirm.
@@ -155,14 +182,19 @@ You can attach a picture, CSV, Excel file, PDF, or text file up to 5 MB. The fil
 
 | Capability | Behavior |
 |---|---|
-| Chat panel | FAB and overlay on Desk and on every installed app route. Header shows the resolved persona |
-| Live reads | Session-user `get_list` / `count_records` / `get_doc` — **no** `ignore_permissions` |
+| Chat panel | FAB and overlay on Desk and on every installed app route. Opens in the user's ERPNext language (a manual switch lasts the browser session). Icon buttons for new chat, expand, and close, with labels in that language |
+| Live steps | Each step of a turn appears while it runs (realtime, user room, matched by request id) |
+| Live reads | Session-user `get_list` / `count_records` / `get_doc` — **no** `ignore_permissions`. Counts and lists apply status words and "for <party>"; "X by Y" groups by Y |
+| Next steps | After a count or list: Show the list · Chart · Export to Excel. Each button sends a fixed follow-up through the normal chat |
+| Records list | The matching records (number, party, date, total, status, newest 10) with an Open list button that keeps simple filters in Desk |
+| Follow-ups | "show them", "اعرضها", "the biggest one" reuse the last question's DocType and filters; "cancel / إلغاء" drops a draft |
 | Arabic labels | Translated DocType and field index. A field name is used only when exactly one readable field matches |
 | Desk links | "Open the import tool" returns a same-site `/desk/...` button. The model cannot supply the path |
-| Writes | Schema check, then one missing field at a time, then **ERP AI Pending Action**. Nothing is saved until you approve |
+| Writes | Schema check, system fields filled from company and settings defaults, customer and item rows read from the sentence, then one missing business field at a time, then **ERP AI Pending Action**. The card names the real record, shows before → after or item lines and a total, and refuses records in the wrong state. Nothing is saved until you approve |
 | Personas | Roles first, then route, then the app implied by the message. A blank active persona is Frappe helper |
 | Memory | Confirmed user facts only, plus rolling chat facts so a follow-up keeps the chosen DocType |
 | Charts | Server-built SVG charts (no heavy chart libraries in the panel) |
+| Numbers you can check | Count answers name what was counted; a model-written number is followed by a "Checked:" line built from the tool result |
 | Moderation | Abuse term scan → event → threshold block; work-only gate before the model |
 | Gaps | Unfinished turns are stored on **ERP AI Enhancement** for a later release. The model does not implement them |
 | LLM | OpenAI-compatible chat. The model chooses an allowlisted tool; the server checks permission and schema |
@@ -189,20 +221,24 @@ Permissions and Frappe roles always win. Guests cannot chat.
 │  6. Work-scope gate     (deterministic, no LLM)             │
 │  7. Fixed "what can you do" list, before any model call     │
 │  8. Memory + persona (roles, route, inferred app)          │
-│  9. Desk link, chart, or count / list / create when the    │
-│     match is clear. Otherwise the tool loop                │
-│ 10. Detectors only when the model is off                    │
-│ 11. Save the reply. Record an Enhancement row if the       │
-│     turn could not be finished                              │
+│  9. Draft check: "cancel" drops it, a new question sets it │
+│     aside, a value fills it                                 │
+│ 10. Desk link, chart, or count / list / create when the    │
+│     match is clear (follow-ups reuse the last filters).    │
+│     Otherwise the tool loop                                 │
+│ 11. Detectors only when the model is off                    │
+│ 12. Save the reply with next-step buttons. Record an        │
+│     Enhancement row if the turn could not be finished       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Integration model
 
-- This app **owns** panel JS/CSS (`public/js`, `public/css`).
+- This app **owns** panel JS/CSS (`public/js/assistant/*.js`, `public/css`).
+- The panel is six plain files loaded in order, sharing `window.erpAi`, with no build step: `core` (state, text, calls, icons), `desk_compat` (Frappe v15 `/app` and v16 `/desk` paths and links), `render` (answer text built as DOM nodes, never HTML), `charts`, `card` (approval card), `panel` (shell, messages, sending, Desk hooks).
 - Any installed app can host the panel. Routes come from that app's `add_to_apps_screen` hook, plus Desk. Add more paths under ERP AI Settings → Overlay Pages.
-- Desk loads assets through `app_include_js` / `app_include_css`.
-- A host page may load the thin `crm_include.js` shim. The shim only inserts this app's bundle.
+- Desk loads the files through `app_include_js` / `app_include_css`. One version string, computed from the files' contents in `hooks.py`, busts browser caches. After updating the app, run `bench migrate` (or `clear-cache`) so Desk serves the new version.
+- A host page may load the thin `crm_include.js` shim. The shim only inserts the same six files, in order.
 
 Do **not** put assistant CSS into a theme app.
 
@@ -245,8 +281,8 @@ All tools run as the **logged-in session user**. The model may call only `descri
 
 | Tool | Purpose |
 |---|---|
-| `propose_write` | Creates **ERP AI Pending Action** only |
-| `approve_action` / `reject_action` | API: execute or cancel after written acknowledgment |
+| `propose_write` | Creates **ERP AI Pending Action** only, after `resolve_write_target` finds the one real record in the right state that the user may change |
+| `approve_action` / `reject_action` | API (POST only): execute after acknowledgment, by the requester only, or reject |
 
 ## Package layout
 
@@ -255,15 +291,19 @@ erpnext_ai_assistant/
 ├── README.md
 ├── pyproject.toml
 ├── docs/
-│   ├── PLAN.md
-│   ├── SRS.md
-│   ├── architecture.md
-│   └── TEST_RESULTS.md
+│   ├── PLAN.md  SRS.md  architecture.md  TEST_RESULTS.md
+│   ├── USABILITY_FIXES.md         # usability and security fixes, with evidence
+│   ├── PANEL_REDESIGN_PLAN.md     # approved panel redesign, phases and progress
+│   ├── ARCHITECTURE_REVIEW.md     # agent architecture compared with this code
+│   └── CHAT_DESIGN_RESEARCH.md    # how other assistants design their chat
 └── erpnext_ai_assistant/
-    ├── hooks.py
+    ├── hooks.py                   # includes the six panel files + one asset version
     ├── install.py                 # seeds settings, persona, skills, overlays
-    ├── api/chat.py                # whitelisted run / approve / reject / boot
-    ├── public/js|css/             # panel + CRM include
+    ├── api/chat.py                # run / approve / reject / boot (state changes: POST only)
+    ├── public/
+    │   ├── js/assistant/          # core, desk_compat, render, charts, card, panel
+    │   ├── js/crm_include.js      # loads the same files on a host app page
+    │   └── css/                   # panel styles, scoped to #erp-ai-root
     ├── services/
     │   ├── run_chat.py            # orchestrator
     │   ├── cheat_sheet.py         # fixed "what can you do" list
@@ -272,7 +312,10 @@ erpnext_ai_assistant/
     │   ├── desk_link.py           # same-site /desk/ open button
     │   ├── enhancement.py         # unfinished-turn backlog
     │   ├── schema.py              # DocType contract for writes
-    │   ├── writes.py              # payload hash + summary
+    │   ├── writes.py              # payload hash, target check, plain card text
+    │   ├── autofill.py            # system defaults, items and party from a sentence
+    │   ├── targeting.py           # words → DocType, status filters, counts, records list
+    │   ├── present.py             # text / table / chart / file views, next-step buttons
     │   ├── apps.py                # installed app routes
     │   ├── imports.py             # import-template match
     │   ├── conversation.py        # newest history window
@@ -293,7 +336,7 @@ erpnext_ai_assistant/
 
 | Method | Role |
 |---|---|
-| `erpnext_ai_assistant.api.chat.run` | Send a message; returns answer + `contains_abuse` + charts/pending |
+| `erpnext_ai_assistant.api.chat.run` | Send a message (POST, optional `request_id` for live steps); returns answer + `contains_abuse` + charts / pending card / `suggestions` |
 | `erpnext_ai_assistant.api.chat.upload_attachment` | Private upload of an image, CSV, XLSX, PDF, or text file |
 | `erpnext_ai_assistant.api.chat.blank_import_template` | CSV header row for one DocType, same columns as a Frappe blank import |
 | `erpnext_ai_assistant.api.chat.approve_action` | Execute pending write after ack |
@@ -317,11 +360,12 @@ Every `run` response includes:
   "message": "…",
   "chat_id": "…",
   "charts": [],
-  "pending_action": null
+  "pending_action": null,
+  "suggestions": [{"label": "Show the list", "send": "show them as a list"}]
 }
 ```
 
-Realtime thinking steps publish on `erp_ai_thinking` / room `erp_ai_chat:{chat_id}`.
+Realtime thinking steps publish on `erp_ai_thinking` to the asking user's own room, with `chat_id` and the `request_id` from `run`. The panel shows only the steps for the message it is waiting on.
 
 ## Files and Data Import review
 
@@ -340,6 +384,10 @@ The composer accepts images, CSV, XLSX, PDF, and plain text (5 MB). Files are st
 - Abuse list is seeded + always unioned at scan time; hits create **ERP AI Abuse Event**.
 - Threshold on Settings can append **Blocked User** and notify manager roles.
 - Writes require a checkbox and acknowledgment text. The payload is hashed and cannot be edited before `approve_action`. Approval runs once.
+- Cards are created only by the assistant's server code, for the logged-in user; users cannot insert or edit them over REST. Only the person who asked can approve; a manager can reject.
+- Approval re-checks permission on that record, blocked DocTypes, and update values, strips protected fields (`owner`, `docstatus`, …), and refuses a card whose record changed after it was made or that is more than a day old.
+- Endpoints that change data accept POST only, so a link cannot approve, reject, or chat.
+- Answer text is built as text nodes; only links to this site are clickable.
 - Uploaded files are private to the signed-in user. A spreadsheet match does not insert rows.
 - API keys must live in Password / `site_config` / env — **never** in this repository.
 - Enhancement excerpts are System Manager only and are not copied into the knowledge index.
@@ -352,6 +400,10 @@ The composer accepts images, CSV, XLSX, PDF, and plain text (5 MB). Files are st
 | [`docs/SRS.md`](docs/SRS.md) | Functional requirements |
 | [`docs/architecture.md`](docs/architecture.md) | Pipeline, DocTypes, tools |
 | [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) | Pipeline test IDs |
+| [`docs/USABILITY_FIXES.md`](docs/USABILITY_FIXES.md) | Usability and security fixes found by testing as everyday users, with status |
+| [`docs/PANEL_REDESIGN_PLAN.md`](docs/PANEL_REDESIGN_PLAN.md) | The approved panel redesign: design, phases, reviews, progress |
+| [`docs/ARCHITECTURE_REVIEW.md`](docs/ARCHITECTURE_REVIEW.md) | Agent architecture best practice compared with this code |
+| [`docs/CHAT_DESIGN_RESEARCH.md`](docs/CHAT_DESIGN_RESEARCH.md) | How other in-app assistants design their chat |
 
 ```bash
 bench --site your.site run-tests --app erpnext_ai_assistant

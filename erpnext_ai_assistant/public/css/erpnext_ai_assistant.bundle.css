@@ -109,6 +109,40 @@
   gap: 0.35rem;
 }
 
+#erp-ai-root .erp-ai-header button.erp-ai-icon-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #18222d;
+}
+
+#erp-ai-root .erp-ai-header button.erp-ai-icon-btn:hover {
+  background: #eef1f3;
+}
+
+#erp-ai-root .erp-ai-header button.erp-ai-icon-btn[aria-pressed="true"] {
+  background: #e3efec;
+  color: #0f6b5c;
+}
+
+#erp-ai-root .erp-ai-header button:focus-visible {
+  outline: 2px solid #0f6b5c;
+  outline-offset: 1px;
+}
+
+#erp-ai-root .erp-ai-header button.erp-ai-lang-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 0.5rem;
+  font-weight: 600;
+}
+
 #erp-ai-root .erp-ai-header button.erp-ai-size {
   width: 32px;
   height: 32px;
@@ -226,11 +260,17 @@
   font-size: 0.8rem;
 }
 
+#erp-ai-root .erp-ai-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 #erp-ai-root .erp-ai-md th, #erp-ai-root .erp-ai-md td {
   border: 1px solid #e2e8f0;
   padding: 0.3rem 0.4rem;
   text-align: start;
   vertical-align: top;
+  white-space: nowrap;
 }
 
 #erp-ai-root .erp-ai-md th {
