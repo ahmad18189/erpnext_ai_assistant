@@ -212,7 +212,10 @@
       });
       i += 1;
     }
-    return { node: table, i: i };
+    // A wide table scrolls inside its own box instead of breaking words mid-cell.
+    var wrap = el("div", "erp-ai-table-wrap");
+    wrap.appendChild(table);
+    return { node: wrap, i: i };
   }
 
   // Markdown subset the assistant writes, built as DOM nodes (no innerHTML).

@@ -14,8 +14,9 @@
       subtitle: "مساعد أعمالك",
       chat: "محادثة",
       history: "السجل",
-      newChat: "جديد",
+      newChat: "محادثة جديدة",
       close: "إغلاق",
+      switchLang: "Switch to English",
       send: "إرسال",
       placeholder: "اسأل عن سجل أو نوع مستند أو خطوة عمل… (عمل فقط)",
       thinking: "التفكير",
@@ -54,8 +55,9 @@
       subtitle: "Your business assistant",
       chat: "Chat",
       history: "History",
-      newChat: "New",
+      newChat: "New chat",
       close: "Close",
+      switchLang: "التبديل إلى العربية",
       send: "Send",
       placeholder: "Ask about a record, a DocType, or a work step… (work only)",
       thinking: "Thinking",
@@ -91,12 +93,17 @@
     },
   };
 
+  // The panel speaks the logged-in user's ERPNext language. A manual switch is kept for this browser session.
   function detectLang() {
+    try {
+      var chosen = sessionStorage.getItem("erp-ai-lang");
+      if (chosen === "ar" || chosen === "en") return chosen;
+    } catch (e) {}
+    var boot = String((window.frappe && frappe.boot && frappe.boot.lang) || "").toLowerCase();
+    if (boot) return boot.indexOf("ar") === 0 ? "ar" : "en";
     var htmlLang = (document.documentElement.lang || "").toLowerCase();
-    if (htmlLang.indexOf("ar") === 0) return "ar";
-    var boot = (window.frappe && frappe.boot && frappe.boot.lang) || "";
-    if (String(boot).indexOf("ar") === 0) return "ar";
-    return "ar"; // Arabic-first default for this product
+    if (htmlLang) return htmlLang.indexOf("ar") === 0 ? "ar" : "en";
+    return "ar"; // no user language known: Arabic-first product default
   }
 
   function t(key, lang) {
@@ -175,7 +182,46 @@
     return n;
   }
 
-  // Text only. The few fixed SVG icons set innerHTML explicitly where they are used.
+  // Header icons: 24×24 outline strokes, drawn as SVG elements so no markup string is ever parsed.
+  var ICONS = {
+    close: ["M6 6l12 12", "M18 6L6 18"],
+    newChat: ["M4 20h4L18.5 9.5l-4-4L4 16v4z", "M13 7l4 4", "M14 20h6"],
+    expand: ["M4 9V4h5", "M15 4h5v5", "M20 15v5h-5", "M9 20H4v-5"],
+    shrink: ["M9 4v5H4", "M20 9h-5V4", "M15 20v-5h5", "M4 15h5v5"],
+  };
+
+  function icon(name) {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "18");
+    svg.setAttribute("height", "18");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    (ICONS[name] || []).forEach(function (d) {
+      var path = document.createElementNS(ns, "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", "currentColor");
+      path.setAttribute("stroke-width", "1.8");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(path);
+    });
+    return svg;
+  }
+
+  // An icon-only button still has a name: the tooltip and the screen-reader label, in the panel's language.
+  function iconButton(name, label) {
+    var b = el("button", "erp-ai-icon-btn");
+    b.type = "button";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.appendChild(icon(name));
+    return b;
+  }
+
+  // Text only. The launcher icon sets innerHTML explicitly where it is built.
   function el(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -190,6 +236,8 @@
   A.call = call;
   A.textNode = textNode;
   A.el = el;
+  A.icon = icon;
+  A.iconButton = iconButton;
   A.I18N = I18N;
   A.state = state;
 })();

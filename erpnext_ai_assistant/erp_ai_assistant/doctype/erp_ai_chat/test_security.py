@@ -105,12 +105,8 @@ class TestPanelLinks(FrappeTestCase):
 		base = os.path.join(frappe.get_app_path("erpnext_ai_assistant"), "public", "js", "assistant")
 		for name in ("render", "panel", "card", "charts", "desk_compat"):
 			source = open(os.path.join(base, f"{name}.js"), encoding="utf-8").read()
-			allowed = (
-				'innerHTML = "";',
-				"sizeBtn.innerHTML = state.expanded ? SHRINK_ICON : EXPAND_ICON; // fixed icon markup, no data",
-				"fab.innerHTML =",
-			)
+			allowed = ('innerHTML = "";', "fab.innerHTML =")
 			for line in source.splitlines():
 				if ".innerHTML =" in line:
-					# Only clearing a container or setting one of the two fixed icons is allowed.
+					# Only clearing a container or the launcher's fixed icon is allowed; header icons are SVG elements.
 					self.assertTrue(any(line.strip().endswith(ok) for ok in allowed), f"{name}: {line.strip()}")

@@ -4,12 +4,9 @@
   if (window.__erpAiAssistantBooted) return;
   window.__erpAiAssistantBooted = 1;
   var A = (window.erpAi = window.erpAi || {});
-  var appendFileButtons = A.appendFileButtons, call = A.call, csrf = A.csrf, el = A.el, hasArabic = A.hasArabic, openRecordButton = A.openRecordButton, parseChartMarkers = A.parseChartMarkers, parseFileLinks = A.parseFileLinks, parseOpenLinks = A.parseOpenLinks, pathMatches = A.pathMatches, renderAck = A.renderAck, renderChart = A.renderChart, state = A.state, t = A.t, textNode = A.textNode;
+  var icon = A.icon, iconButton = A.iconButton;
+  var appendFileButtons = A.appendFileButtons, call = A.call, csrf = A.csrf, el = A.el, openRecordButton = A.openRecordButton, parseChartMarkers = A.parseChartMarkers, parseFileLinks = A.parseFileLinks, parseOpenLinks = A.parseOpenLinks, pathMatches = A.pathMatches, renderAck = A.renderAck, renderChart = A.renderChart, state = A.state, t = A.t, textNode = A.textNode;
 
-  var EXPAND_ICON =
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M4 9V4h5v2H6v3H4zm10-5h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm13 3v-3h2v5h-5v-2h3z"/></svg>';
-  var SHRINK_ICON =
-    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M9 4v3H6v2h5V4H9zm4 0v5h5V7h-3V4h-2zM4 13v2h3v3h2v-5H4zm9 0v5h2v-3h3v-2h-5z"/></svg>';
   function ensureAssets() {
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
@@ -124,17 +121,19 @@
     brand.appendChild(textNode("span", "erp-ai-persona", brandSub));
     header.appendChild(brand);
     var actions = el("div", "erp-ai-header-actions");
-    var langBtn = el("button", "", state.lang === "ar" ? "EN" : "ع");
-    langBtn.title = "Language / اللغة";
+    // Language stays a short text switch ("EN" / "ع"): a language name is clearer than any icon.
+    var langBtn = el("button", "erp-ai-lang-btn", state.lang === "ar" ? "EN" : "ع");
+    langBtn.type = "button";
+    langBtn.title = t("switchLang");
+    langBtn.setAttribute("aria-label", t("switchLang"));
     langBtn.addEventListener("click", function () {
       state.lang = state.lang === "ar" ? "en" : "ar";
+      try {
+        sessionStorage.setItem("erp-ai-lang", state.lang);
+      } catch (e) {}
       render();
     });
-    var sizeBtn = el("button", "erp-ai-size");
-    sizeBtn.innerHTML = state.expanded ? SHRINK_ICON : EXPAND_ICON; // fixed icon markup, no data
-    sizeBtn.type = "button";
-    sizeBtn.title = state.expanded ? t("shrink") : t("expand");
-    sizeBtn.setAttribute("aria-label", sizeBtn.title);
+    var sizeBtn = iconButton(state.expanded ? "shrink" : "expand", state.expanded ? t("shrink") : t("expand"));
     sizeBtn.setAttribute("aria-pressed", state.expanded ? "true" : "false");
     sizeBtn.addEventListener("click", function () {
       state.expanded = !state.expanded;
@@ -142,12 +141,13 @@
         sessionStorage.setItem("erp-ai-expanded", state.expanded ? "1" : "0");
       } catch (e) {}
       root.classList.toggle("erp-ai-expanded", state.expanded);
-      sizeBtn.title = state.expanded ? t("shrink") : t("expand");
-      sizeBtn.setAttribute("aria-label", sizeBtn.title);
+      var label = state.expanded ? t("shrink") : t("expand");
+      sizeBtn.title = label;
+      sizeBtn.setAttribute("aria-label", label);
       sizeBtn.setAttribute("aria-pressed", state.expanded ? "true" : "false");
-      sizeBtn.innerHTML = state.expanded ? SHRINK_ICON : EXPAND_ICON; // fixed icon markup, no data
+      sizeBtn.replaceChild(icon(state.expanded ? "shrink" : "expand"), sizeBtn.firstChild);
     });
-    var neu = el("button", "", t("newChat"));
+    var neu = iconButton("newChat", t("newChat"));
     neu.addEventListener("click", function () {
       state.chatId = null;
       state.tab = "chat";
@@ -155,7 +155,7 @@
       render();
       bodyChat();
     });
-    var close = el("button", "", t("close"));
+    var close = iconButton("close", t("close"));
     close.addEventListener("click", function () {
       state.open = false;
       render();
@@ -435,7 +435,8 @@
     } else {
       bubble.textContent = parsed.text;
     }
-    bubble.setAttribute("dir", hasArabic(parsed.text) ? "rtl" : "auto");
+    // The first real letter sets the direction: an English answer that names Arabic customers stays left to right.
+    bubble.setAttribute("dir", "auto");
     wrap.appendChild(bubble);
     (parsed.links || []).forEach(function (link) {
       wrap.appendChild(openRecordButton(link));
@@ -556,7 +557,6 @@
     var msg = (ta.value || "").trim();
     var files = state.files.slice();
     if (!msg && !files.length) return;
-    if (hasArabic(msg)) state.lang = "ar";
     ta.value = "";
     state.draft = "";
     state.files = [];
