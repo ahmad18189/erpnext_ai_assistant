@@ -204,6 +204,22 @@
 
 .erp-ai-md {
   white-space: normal;
+  unicode-bidi: plaintext;
+  overflow-wrap: anywhere;
+}
+
+.erp-ai-md ul,
+.erp-ai-md ol {
+  margin: 0.35rem 0 0.15rem;
+  padding-inline-start: 1.15rem;
+}
+
+.erp-ai-md li {
+  margin: 0.28rem 0;
+}
+
+.erp-ai-md li + li {
+  margin-top: 0.35rem;
 }
 
 .erp-ai-md table {
@@ -384,6 +400,42 @@
   height: 0.65rem;
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+.erp-ai-file-link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f1b2e;
+  text-decoration: none;
+  direction: ltr;
+  text-align: left;
+}
+
+.erp-ai-file-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.erp-ai-file-path {
+  font-size: 0.72rem;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.erp-ai-file-link:hover {
+  border-color: #0f1b2e;
+  background: #f8fafc;
+  color: #0f1b2e;
 }
 
 .erp-ai-open-link {
