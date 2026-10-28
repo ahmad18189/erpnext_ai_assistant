@@ -364,13 +364,19 @@ def _seed_desktop_icon():
 
 	label = "The ERPNext-AI-Assistant"
 	link = "/app/the-erpnext-ai-assistant"
-	if frappe.db.exists("Desktop Icon", label):
-		doc = frappe.get_doc("Desktop Icon", label)
+	# v15 autonames Desktop Icon with a hash, and standard icons are unique per module.
+	existing = frappe.db.get_value(
+		"Desktop Icon",
+		{"module_name": "ERP AI Assistant", "standard": 1},
+		"name",
+	) or frappe.db.get_value("Desktop Icon", {"label": label}, "name")
+	if existing:
+		doc = frappe.get_doc("Desktop Icon", existing)
 		changed = False
 		if doc.hidden:
 			doc.hidden = 0
 			changed = True
-		if not doc.link:
+		if doc.link != link:
 			doc.link = link
 			changed = True
 		if not doc.type:
