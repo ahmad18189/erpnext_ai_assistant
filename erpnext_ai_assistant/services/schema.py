@@ -93,7 +93,7 @@ def describe_doctype(doctype: str) -> dict:
 						continue
 					if cdf.reqd:
 						child_fields.append(
-							{"fieldname": cdf.fieldname, "label": cdf.label, "fieldtype": cdf.fieldtype}
+							{"fieldname": cdf.fieldname, "label": cdf.label, "fieldtype": cdf.fieldtype, "read_only": int(cdf.read_only or 0)}
 						)
 			children.append(
 				{
@@ -121,16 +121,40 @@ def describe_doctype(doctype: str) -> dict:
 	return {"doctype": doctype, "fields": fields, "children": children}
 
 
+_NUMERIC = {"Check": int, "Int": int, "Float": float, "Currency": float, "Percent": float}
+
+
+def typed_default(fieldtype: str | None, default):
+	"""A default as Frappe would store it. "0" for a Check is false in the DB but true in Python."""
+	cast = _NUMERIC.get(fieldtype or "")
+	if not cast or not isinstance(default, str):
+		return default
+	try:
+		return cast(float(default)) if cast is int else cast(default)
+	except ValueError:
+		return default
+
+
 def prepare_payload(doctype: str, raw: dict | None, action: str = "create", apply_defaults: bool = True) -> dict:
 	"""Drop unknown fields, apply DocType defaults, and list what is still required."""
 	described = describe_doctype(doctype)
 	by_name = {f["fieldname"]: f for f in described["fields"]}
+	tables = {child["fieldname"] for child in described["children"]}
 	cleaned: dict = {}
 	errors: list[str] = []
 	applied_defaults: list[str] = []
 	for key, value in (raw or {}).items():
 		if str(key).startswith("_"):
 			cleaned[key] = value
+			continue
+		if key in tables:
+			# Item rows and other child tables: a list of row objects, checked below.
+			if isinstance(value, dict):
+				value = [value]
+			if isinstance(value, list):
+				cleaned[key] = value
+			else:
+				errors.append(f"{key} must be a list of rows")
 			continue
 		df = by_name.get(key)
 		if not df:
@@ -157,11 +181,19 @@ def prepare_payload(doctype: str, raw: dict | None, action: str = "create", appl
 		cleaned[key] = value
 
 	missing: list[dict] = []
+	if action == "create" and apply_defaults:
+		from erpnext_ai_assistant.services.autofill import fill_header, fill_rows
+
+		applied_defaults.extend(fill_header(described["fields"], cleaned))
+		errors.extend(fill_rows(described["children"], cleaned))
 	if action == "create":
 		for df in described["fields"]:
 			if df["read_only"]:
 				continue
 			if cleaned.get(df["fieldname"]) not in (None, ""):
+				continue
+			# Frappe fills Today / Now / __user on insert, so they are never missing, even on the approval re-check.
+			if str(df.get("default") or "") in {"Today", "Now", "now"} or str(df.get("default") or "").startswith("__"):
 				continue
 			if apply_defaults and df.get("default") not in (None, ""):
 				default = str(df["default"])
@@ -173,11 +205,16 @@ def prepare_payload(doctype: str, raw: dict | None, action: str = "create", appl
 					if not default:
 						missing.append(df)
 						continue
-				cleaned[df["fieldname"]] = default
+				cleaned[df["fieldname"]] = typed_default(df.get("fieldtype"), default)
 				if df.get("fieldtype") != "Check":
 					applied_defaults.append({"label": df.get("label") or df["fieldname"], "value": default})
 			elif df["reqd"]:
 				missing.append(df)
+		from erpnext_ai_assistant.services.autofill import ASKED_DATES
+
+		asked = ASKED_DATES.get(doctype)
+		if asked and asked in by_name and cleaned.get(asked) in (None, ""):
+			missing.append(by_name[asked])
 		for child in described["children"]:
 			rows = cleaned.get(child["fieldname"])
 			if child["reqd"] and not rows:
@@ -196,6 +233,9 @@ def prepare_payload(doctype: str, raw: dict | None, action: str = "create", appl
 						errors.append(f"{child['fieldname']} row is not an object")
 						continue
 					for col in child["required_columns"]:
+						# Unit, factor and similar come from the Item; an unknown item is already an error.
+						if col.get("read_only") or col["fieldname"] in _FILLED_ROW_FIELDS:
+							continue
 						if row.get(col["fieldname"]) in (None, ""):
 							missing.append(
 								{
@@ -265,6 +305,9 @@ def next_step_payload(doctype: str, prepared: dict, lang: str = "en") -> dict:
 			continue
 		if isinstance(value, (str, int, float, bool)) or value is None:
 			collected[key] = value
+		elif isinstance(value, list) and all(isinstance(row, dict) for row in value):
+			# Item rows already given ("5 monitors") must survive the turn that asks for the date.
+			collected[key] = value
 	next_ask = ""
 	if missing:
 		first = missing[0]
@@ -303,12 +346,26 @@ def guided_message(doctype: str, prepared: dict, lang: str = "en") -> tuple[str,
 	return text, step
 
 
+# Row columns filled from the Item master or computed by ERPNext; never asked of the user.
+_FILLED_ROW_FIELDS = {"uom", "stock_uom", "conversion_factor", "description", "rate", "amount"}
+
+
+def typed_columns(columns: list[dict]) -> list[str]:
+	"""Labels of the row values a person actually types: the item and the quantity."""
+	labels = []
+	for col in columns:
+		if col.get("read_only") or col.get("fieldname") in _FILLED_ROW_FIELDS:
+			continue
+		labels.append("Item" if col.get("fieldname") in ("item_name", "item_code") else (col.get("label") or col.get("fieldname")))
+	return list(dict.fromkeys(labels))
+
+
 def missing_message(doctype: str, prepared: dict, lang: str = "en") -> str:
 	lines = []
 	for item in prepared.get("missing") or []:
 		label = _label(item.get("label") or item.get("fieldname"), lang)
 		if item.get("required_columns"):
-			cols = ", ".join(_label(col.get("label") or col.get("fieldname"), lang) for col in item["required_columns"])
+			cols = ", ".join(_label(col, lang) for col in typed_columns(item["required_columns"]))
 			child = _label(item.get("child_doctype"), lang)
 			label = f"{label} ({child}: {cols})" if lang != "ar" else f"{label} ({child}: {cols})"
 		lines.append(f"- {label}")
@@ -407,7 +464,7 @@ def propose_schema_write(
 
 			if not chat_id:
 				return {"error": "missing_chat", "status": "failed", "message_en": "No chat.", "message_ar": "لا توجد محادثة."}
-			return propose_write(chat_id, action, doctype, {}, target_name=target)
+			return propose_write(chat_id, action, doctype, {}, target_name=target, lang=lang)
 		values = extract_field_values(doctype, text or "")
 		if not values:
 			ask = f"Which fields of {doctype} {target} should change? Use Field Name: value."
@@ -416,7 +473,7 @@ def propose_schema_write(
 
 		if not chat_id:
 			return {"error": "missing_chat", "status": "failed", "message_en": "No chat.", "message_ar": "لا توجد محادثة."}
-		return propose_write(chat_id, "update", doctype, values, target_name=target)
+		return propose_write(chat_id, "update", doctype, values, target_name=target, lang=lang)
 
 	values = _values_for_create(doctype, text or "")
 	prepared = prepare_payload(doctype, values, "create")
@@ -438,7 +495,7 @@ def propose_schema_write(
 		return {"error": "missing_chat", "status": "failed", "message_en": "No chat.", "message_ar": "لا توجد محادثة."}
 	from erpnext_ai_assistant.services.tools.registry import propose_write
 
-	return propose_write(chat_id, "create", doctype, prepared["payload"])
+	return propose_write(chat_id, "create", doctype, prepared["payload"], lang=lang)
 
 
 def _values_for_create(doctype: str, text: str) -> dict:

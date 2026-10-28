@@ -14,11 +14,19 @@ from erpnext_ai_assistant.services.doctype_catalog import match_catalog
 from erpnext_ai_assistant.services.targeting import _action, _has, _is_howto
 
 _UPDATE_WORDS = ("تعديل", "حدث", "تحديث", "update", "edit", "change")
+# Record actions that need an existing record. They skip the Count/Show/Create menu.
+_RECORD_ACTION_WORDS = (
+	("submit", ("submit", "اعتمد", "اعتماد", "رحل", "ترحيل")),
+	("cancel", ("cancel", "الغ", "الغي", "الغاء")),
+	("delete", ("delete", "remove", "احذف", "حذف", "امسح")),
+)
 _DIGIT_INDEX = {"1": 0, "2": 1, "3": 2, "١": 0, "٢": 1, "٣": 2}
 
 
 def infer_intent(message: str | None, route: str | None = None, user: str | None = None) -> dict:
-	hits = match_catalog(message, limit=5)
+	from erpnext_ai_assistant.services.targeting import doctype_text, without_grouping
+
+	hits = match_catalog(doctype_text(message), limit=5) or match_catalog(without_grouping(message), limit=5)
 	action = _action_name(message)
 	installed = set()
 	try:
@@ -100,6 +108,9 @@ def _action_name(message: str | None) -> str:
 	if _is_howto(message or ""):
 		return "howto"
 	norm = normalize_arabic(message)
+	for action, words in _RECORD_ACTION_WORDS:
+		if any(_has(norm, word) for word in words):
+			return action
 	if any(_has(norm, word) for word in _UPDATE_WORDS):
 		return "update"
 	return _action(message or "") or "unknown"
@@ -134,6 +145,9 @@ def _next_step(action: str, lang: str) -> str:
 		"query": "اختر واحداً وسأعرض الصفحة الظاهرة لك.",
 		"create": "اختر النوع ثم أرسل الحقول. لن يُحفظ شيء قبل موافقتك.",
 		"update": "اختر النوع ثم أرسل اسم السجل والحقل المطلوب تعديله.",
+		"submit": "اختر النوع ثم أرسل اسم السجل أو الطرف لاعتماده.",
+		"cancel": "اختر النوع ثم أرسل اسم السجل أو الطرف لإلغائه.",
+		"delete": "اختر النوع ثم أرسل اسم السجل المطلوب حذفه.",
 		"howto": "اختر النوع وسأبحث عن الخطوات.",
 	}
 	en = {
@@ -141,6 +155,9 @@ def _next_step(action: str, lang: str) -> str:
 		"query": "Say which one and I will show the page you can read.",
 		"create": "Say which one, then send the fields. Nothing is saved until you approve.",
 		"update": "Say which one, then send the record name and the field to change.",
+		"submit": "Say which one, then name the record or the party to submit.",
+		"cancel": "Say which one, then name the record or the party to cancel.",
+		"delete": "Say which one, then name the record to delete.",
 		"howto": "Say which one and I will look up the steps.",
 	}
 	table = ar if lang == "ar" else en

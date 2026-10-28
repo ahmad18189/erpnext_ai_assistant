@@ -197,7 +197,7 @@ def read_skill(title: str | None = None, route: str | None = None) -> list[dict]
 	return out
 
 
-def propose_write(chat: str, action_type: str, target_doctype: str, payload: dict, summary: str | None = None, target_name: str | None = None, message: str | None = None) -> dict:
+def propose_write(chat: str, action_type: str, target_doctype: str, payload: dict, summary: str | None = None, target_name: str | None = None, message: str | None = None, lang: str = "en") -> dict:
 	settings = frappe.get_single("ERP AI Settings")
 	if not settings.allow_pending_writes:
 		frappe.throw("Writes are disabled in ERP AI Settings")
@@ -215,8 +215,15 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 				+ "; ".join(prepared["errors"])
 			)
 		payload = prepared["payload"]
+	else:
+		from erpnext_ai_assistant.services.writes import resolve_write_target
+
+		checked = resolve_write_target(action_type, target_doctype, target_name, payload)
+		if checked["status"] != "ok":
+			return checked
+		target_name = checked["name"]
 	body = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True, default=str)
-	card = summary_from_payload(action_type, target_doctype, payload or {}, target_name)
+	card = summary_from_payload(action_type, target_doctype, payload or {}, target_name, lang=lang)
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Pending Action",

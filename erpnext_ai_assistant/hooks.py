@@ -7,8 +7,8 @@ app_description = "Arabic and English chat assistant for Frappe and ERPNext. Cou
 app_email = "ahmad18189@gmail.com"
 app_license = "MIT"
 
-app_include_js = ["/assets/erpnext_ai_assistant/js/erpnext_ai_assistant.bundle.js?v=ai23"]
-app_include_css = ["/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai23"]
+app_include_js = ["/assets/erpnext_ai_assistant/js/erpnext_ai_assistant.bundle.js?v=ai25"]
+app_include_css = ["/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai25"]
 
 after_migrate = ["erpnext_ai_assistant.install.after_migrate"]
 after_install = ["erpnext_ai_assistant.install.after_install"]

@@ -141,7 +141,9 @@ class TestReviewFixes(FrappeTestCase):
 				with patch("erpnext_ai_assistant.services.tools.agent.dispatch", side_effect=dispatch):
 					with patch("erpnext_ai_assistant.services.tools.agent.active_tool_specs", return_value=[{"type": "function"}]):
 						out = run_tool_loop("sys", "how many todos", [], "", None, None, "en", lambda *a, **k: None)
-		self.assertEqual(out["answer"], "There are 3 tasks.")
+		# The model's sentence stays; the line built from the tool result shows what was counted.
+		self.assertTrue(out["answer"].startswith("There are 3 tasks."))
+		self.assertIn("Checked: 3 ToDo", out["answer"])
 
 	def test_live_claim_without_evidence_is_refused(self):
 		def chat_message(messages, tools=None, **kwargs):

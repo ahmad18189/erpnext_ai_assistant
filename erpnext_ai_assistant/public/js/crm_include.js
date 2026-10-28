@@ -3,7 +3,7 @@
   if (window.__erpAiCrmInclude) return;
   window.__erpAiCrmInclude = 1;
 
-  var VER = "ai24";
+  var VER = "ai25";
 
   function add(tag, attrs) {
     var el = document.createElement(tag);
