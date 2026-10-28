@@ -237,6 +237,11 @@ def run_chat(
 		if clarified:
 			answer_from_tools = clarified
 			clarify_intent = intent
+	if answer_from_tools is None and pending is None and not choice and not reused:
+		early = clarification_message(intent, lang)
+		if early:
+			answer_from_tools = early
+			clarify_intent = intent
 	continued = None
 	if answer_from_tools is None and pending is None and not choice and not nav:
 		continued = continue_guided_create(message, prior_facts, chat.name, lang, step)
