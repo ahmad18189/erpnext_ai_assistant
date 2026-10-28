@@ -564,8 +564,16 @@ def run_chat(
 		"next_ask": (pending or {}).get("next_ask") if isinstance(pending, dict) else None,
 		"missing_fields": ((pending or {}).get("next_step") or {}).get("missing") if isinstance(pending, dict) else [],
 		"files": download_files,
+		# Next-step buttons after a count or a list ("Show the list", "Chart", "Export to Excel").
+		"suggestions": [] if pending else _follow_ups(gap_signals, lang),
 		**_abuse_payload(abuse),
 	}
+
+
+def _follow_ups(signals: list, lang: str) -> list[dict]:
+	from erpnext_ai_assistant.services.present import follow_ups
+
+	return follow_ups(signals, lang)
 
 
 def _export_followup(message: str) -> bool:

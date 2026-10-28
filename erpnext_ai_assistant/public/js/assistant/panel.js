@@ -453,6 +453,7 @@
     });
     appendFileButtons(wrap, filesInText.files.concat((extra && extra.files) || []));
     if (extra && extra.ack) wrap.appendChild(renderAck(extra.ack));
+    if (extra && extra.suggestions && extra.suggestions.length) wrap.appendChild(renderSuggestions(extra.suggestions));
     log.appendChild(wrap);
     if (body) body.scrollTop = body.scrollHeight;
     return wrap;
@@ -559,6 +560,7 @@
     ta.value = "";
     state.draft = "";
     state.files = [];
+    clearSuggestions();
     appendMsg("user", msg || files.map(function (file) { return file.name; }).join(", "));
     state.steps = [];
     state.thinkingMs = 0;
@@ -613,6 +615,7 @@
           thinking: thinkingBlock(state.steps, state.thinkingMs),
           charts: res.charts || [],
           files: res.files || [],
+          suggestions: res.suggestions || [],
           ack: res.pending_action
             ? {
                 pending_action: res.pending_action,
@@ -630,6 +633,36 @@
         if (asstWrap && asstWrap.parentNode) asstWrap.parentNode.removeChild(asstWrap);
         appendMsg("assistant", t("error") + (err && err.message ? " (" + err.message + ")" : ""));
       });
+  }
+
+  // Next-step buttons ("Show the list", "Chart", "Export to Excel") under the newest answer only.
+  // Each one sends its text like a typed message; the server built the text, the label is plain text.
+  function renderSuggestions(items) {
+    var row = el("div", "erp-ai-suggest");
+    items.slice(0, 3).forEach(function (item) {
+      if (!item || !item.label || !item.send) return;
+      var b = el("button", "erp-ai-suggest-btn", item.label);
+      b.type = "button";
+      b.addEventListener("click", function () {
+        sendText(String(item.send).slice(0, 200));
+      });
+      row.appendChild(b);
+    });
+    return row;
+  }
+
+  function clearSuggestions() {
+    var log = chatLog();
+    Array.prototype.forEach.call(log.querySelectorAll(".erp-ai-suggest"), function (n) {
+      n.parentNode.removeChild(n);
+    });
+  }
+
+  function sendText(text) {
+    var ta = document.getElementById("erp-ai-input");
+    if (!ta || state.busy) return;
+    ta.value = text;
+    onSend();
   }
 
   // Leaving the current chat drops whatever reply is still on its way.

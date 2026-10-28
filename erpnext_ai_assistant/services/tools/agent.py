@@ -498,7 +498,7 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 		return {
 			"answer": answer,
 			"pending": None,
-			"signals": [{"kind": "had_data", "action": "count_records", "doctype": doctype}],
+			"signals": [{"kind": "had_data", "action": "count_records", "doctype": doctype, "total": int(total or 0)}],
 		}
 	step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"query {doctype}", detail_ar=f"استعلام {doctype}")
 	step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "running")
@@ -506,6 +506,16 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 	from erpnext_ai_assistant.services.sheets import build_export
 
 	formats = output_formats(user)
+	if "list" in formats:
+		from erpnext_ai_assistant.services.targeting import records_table
+
+		listed, total = records_table(doctype, user, lang)
+		step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "done", detail=str(total), detail_ar=str(total))
+		return {
+			"answer": listed,
+			"pending": None,
+			"signals": [{"kind": "had_data", "action": "query_records", "doctype": doctype, "total": total, "shown": sorted(formats)}],
+		}
 	full = summarize_doctype(doctype, user, lang)
 	intro = (full or "").split("\n", 1)[0]
 	answer = full if "text" in formats else intro
@@ -540,7 +550,7 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 		"pending": None,
 		"files": [item for item in files_ready if item],
 		"charts": charts,
-		"signals": [{"kind": "had_data", "action": "query_records", "doctype": doctype}],
+		"signals": [{"kind": "had_data", "action": "query_records", "doctype": doctype, "shown": sorted(formats)}],
 	}
 
 

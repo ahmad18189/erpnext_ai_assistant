@@ -211,3 +211,32 @@ class TestCardText(FrappeTestCase):
 		self.assertTrue(text.startswith(f"Change ToDo {name}"))
 		self.assertIn("Low → High", text)
 		self.assertNotIn("priority:", text)
+
+
+class TestFollowUps11(FrappeTestCase):
+	"""Fix 11 (first part): next-step buttons after a count, and "Show the list" lists the same records."""
+
+	def test_buttons_after_a_count_and_after_a_list(self):
+		from erpnext_ai_assistant.services.present import follow_ups
+
+		after_count = follow_ups([{"kind": "had_data", "action": "count_records", "doctype": "ToDo", "total": 3}], "en")
+		self.assertEqual([b["label"] for b in after_count], ["Show the list", "Chart", "Export to Excel"])
+		self.assertTrue(all(len(b["send"]) <= 200 for b in after_count))
+		after_list = follow_ups([{"kind": "had_data", "action": "query_records", "doctype": "ToDo", "total": 3, "shown": ["list"]}], "ar")
+		self.assertNotIn("عرض القائمة", [b["label"] for b in after_list])
+		self.assertEqual(follow_ups([{"kind": "had_data", "action": "count_records", "total": 0}], "en"), [])
+		self.assertEqual(follow_ups([], "en"), [])
+
+	def test_list_view_uses_the_count_filters(self):
+		from erpnext_ai_assistant.services.present import output_formats
+
+		_todo("listed one", priority="High")
+		_todo("listed two", priority="High")
+		self.assertIn("list", output_formats("show them as a list"))
+		self.assertIn("list", output_formats("اعرض هذه كقائمة"))
+		text, total = targeting.records_table("ToDo", "show the closed todos as a list", "en")
+		closed = frappe.db.count("ToDo", {"status": "Closed"})
+		self.assertEqual(total, closed)
+		if closed:
+			self.assertIn("| ID |", text)
+			self.assertIn("[[open:/app/todo?status=Closed|", text)

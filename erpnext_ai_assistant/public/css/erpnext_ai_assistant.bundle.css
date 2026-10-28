@@ -558,6 +558,32 @@
   padding: 1rem 0;
 }
 
+#erp-ai-root .erp-ai-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+#erp-ai-root .erp-ai-suggest-btn {
+  min-height: 32px;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid #94a3b8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0f1b2e;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+#erp-ai-root .erp-ai-suggest-btn:hover,
+#erp-ai-root .erp-ai-suggest-btn:focus-visible {
+  border-color: #0f1b2e;
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 2px #0f1b2e33;
+}
+
 #erp-ai-root .erp-ai-cheat {
   display: flex;
   flex-direction: column;

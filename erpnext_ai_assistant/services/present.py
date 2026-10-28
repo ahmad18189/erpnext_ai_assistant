@@ -25,6 +25,8 @@ def output_formats(text: str | None) -> set[str]:
 		found.add("chart")
 	if "table" in norm or "جدول" in norm:
 		found.add("table")
+	if re.search(r"(?<!\w)list(?!\w)", norm) or "قائمه" in norm or "كقائمه" in norm:
+		found.add("list")
 	if "csv" in norm:
 		found.add("csv")
 	if any(token in norm for token in ("اكسل", "excel", "xlsx")):
@@ -198,3 +200,30 @@ def _font(size: int):
 		except Exception:
 			continue
 	return ImageFont.load_default()
+
+
+# What each button sends. They are ordinary follow-up messages ("them" = the previous question's records),
+# built here from fixed text, never from model output.
+_FOLLOW_UPS = {
+	"list": ("عرض القائمة", "اعرض هذه كقائمة", "Show the list", "show them as a list"),
+	"chart": ("مخطط", "اعرض هذه في مخطط", "Chart", "show them as a chart"),
+	"xlsx": ("تصدير Excel", "صدّر هذه إلى Excel", "Export to Excel", "export them to Excel"),
+	"table": ("ملخص حسب الطرف", "اعرض هذه في جدول", "Summary table", "show them in a table"),
+}
+
+
+def follow_ups(signals: list, lang: str) -> list[dict]:
+	"""2–3 next steps after a count or a list of records. Nothing after an empty result or a card."""
+	row = next((item for item in signals or [] if item.get("kind") == "had_data" and item.get("action") in ("count_records", "query_records")), None)
+	if not row or row.get("total") == 0:
+		return []
+	shown = set(row.get("shown") or [])
+	if row.get("action") == "count_records":
+		order = ["list", "chart", "xlsx"]
+	else:
+		order = [view for view in ("list", "chart", "xlsx", "table") if view not in shown and not ("xlsx" in shown and view == "xlsx")]
+	out = []
+	for view in order[:3]:
+		label_ar, send_ar, label_en, send_en = _FOLLOW_UPS[view]
+		out.append({"label": label_ar if lang == "ar" else label_en, "send": send_ar if lang == "ar" else send_en})
+	return out
