@@ -351,7 +351,8 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 	def test_T25_approval_summary_is_not_html(self):
 		from pathlib import Path
 
-		source = Path(frappe.get_app_path("erpnext_ai_assistant", "public", "js", "erpnext_ai_assistant.bundle.js")).read_text()
+		folder = Path(frappe.get_app_path("erpnext_ai_assistant", "public", "js", "assistant"))
+		source = (folder / "card.js").read_text() + (folder / "desk_compat.js").read_text()
 		self.assertIn("function safeLocalPath", source)
 		self.assertIn('textNode("div", "erp-ai-ack-summary", (pending && pending.summary)', source)
 		self.assertNotIn('el("div", "", (pending && pending.summary)', source)

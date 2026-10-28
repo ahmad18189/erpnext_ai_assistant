@@ -1,7 +1,7 @@
 /* The ERPNext-AI-Assistant — app-owned panel styles. */
 @import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap");
 
-.erp-ai-root {
+#erp-ai-root {
   --erp-ai-navy: #0f1b2e;
   --erp-ai-bg: #ffffff;
   --erp-ai-muted: #64748b;
@@ -26,23 +26,26 @@
   color: #0f172a;
 }
 
-.erp-ai-root[dir="ltr"] {
+#erp-ai-root[dir="ltr"] {
   direction: ltr;
 }
 
-.erp-ai-root.erp-ai-expanded {
+#erp-ai-root.erp-ai-expanded {
   top: 16px;
   left: 16px;
   width: min(960px, calc(100vw - 32px));
   height: calc(100vh - 32px);
 }
 
-.erp-ai-root[hidden],
-.erp-ai-root.erp-ai-closed {
+#erp-ai-root[hidden], #erp-ai-root.erp-ai-closed {
   display: none !important;
 }
 
-.erp-ai-fab {
+#erp-ai-fab[hidden] {
+  display: none !important;
+}
+
+#erp-ai-fab {
   position: fixed;
   bottom: 28px;
   left: 28px;
@@ -62,15 +65,15 @@
   padding: 0;
 }
 
-.erp-ai-fab svg {
+#erp-ai-fab svg {
   display: block;
 }
 
-.erp-ai-fab:hover {
+#erp-ai-fab:hover {
   background: #1a2b45;
 }
 
-.erp-ai-header {
+#erp-ai-root .erp-ai-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -80,13 +83,13 @@
   background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
 }
 
-.erp-ai-brand {
+#erp-ai-root .erp-ai-brand {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.erp-ai-brand strong {
+#erp-ai-root .erp-ai-brand strong {
   font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -94,19 +97,19 @@
   color: var(--erp-ai-navy);
 }
 
-.erp-ai-brand span {
+#erp-ai-root .erp-ai-brand span {
   margin-top: 2px;
   font-size: 0.75rem;
   line-height: 1.35;
   color: var(--erp-ai-muted);
 }
 
-.erp-ai-header-actions {
+#erp-ai-root .erp-ai-header-actions {
   display: flex;
   gap: 0.35rem;
 }
 
-.erp-ai-header button.erp-ai-size {
+#erp-ai-root .erp-ai-header button.erp-ai-size {
   width: 32px;
   height: 32px;
   padding: 0;
@@ -115,20 +118,17 @@
   justify-content: center;
 }
 
-.erp-ai-header button.erp-ai-size svg {
+#erp-ai-root .erp-ai-header button.erp-ai-size svg {
   display: block;
 }
 
-.erp-ai-root.erp-ai-expanded .erp-ai-size {
+#erp-ai-root.erp-ai-expanded .erp-ai-size {
   background: var(--erp-ai-navy);
   color: #fff;
   border-color: var(--erp-ai-navy);
 }
 
-.erp-ai-header button,
-.erp-ai-tabs button,
-.erp-ai-composer button,
-.erp-ai-ack button {
+#erp-ai-root .erp-ai-header button, #erp-ai-root .erp-ai-tabs button, #erp-ai-root .erp-ai-composer button, #erp-ai-root .erp-ai-ack button {
   font: inherit;
   cursor: pointer;
   border-radius: 8px;
@@ -138,15 +138,13 @@
   padding: 0.35rem 0.65rem;
 }
 
-.erp-ai-header button.primary,
-.erp-ai-composer button.primary,
-.erp-ai-ack button.primary {
+#erp-ai-root .erp-ai-header button.primary, #erp-ai-root .erp-ai-composer button.primary, #erp-ai-root .erp-ai-ack button.primary {
   background: var(--erp-ai-navy);
   color: #fff;
   border-color: var(--erp-ai-navy);
 }
 
-.erp-ai-tabs {
+#erp-ai-root .erp-ai-tabs {
   display: flex;
   gap: 1rem;
   list-style: none;
@@ -155,7 +153,7 @@
   border-bottom: 1px solid var(--erp-ai-border);
 }
 
-.erp-ai-tabs button {
+#erp-ai-root .erp-ai-tabs button {
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -164,29 +162,29 @@
   padding: 0.3rem 0;
 }
 
-.erp-ai-tabs button.active {
+#erp-ai-root .erp-ai-tabs button.active {
   color: #0f172a;
   font-weight: 700;
   border-bottom-color: var(--erp-ai-navy);
 }
 
-.erp-ai-body {
+#erp-ai-root .erp-ai-body {
   flex: 1;
   overflow: auto;
   padding: 0.75rem 1rem;
   background: linear-gradient(180deg, #f8fafc 0%, #fff 48%);
 }
 
-.erp-ai-msg {
+#erp-ai-root .erp-ai-msg {
   margin-bottom: 0.85rem;
   max-width: 92%;
 }
 
-.erp-ai-msg.user {
+#erp-ai-root .erp-ai-msg.user {
   margin-inline-start: auto;
 }
 
-.erp-ai-msg .bubble {
+#erp-ai-root .erp-ai-msg .bubble {
   padding: 0.65rem 0.75rem;
   border-radius: 12px;
   background: #fff;
@@ -196,96 +194,85 @@
   font-size: 0.9rem;
 }
 
-.erp-ai-msg.user .bubble {
+#erp-ai-root .erp-ai-msg.user .bubble {
   background: #0f1b2e;
   color: #fff;
   border-color: #0f1b2e;
 }
 
-.erp-ai-md {
+#erp-ai-root .erp-ai-md {
   white-space: normal;
   unicode-bidi: plaintext;
   overflow-wrap: anywhere;
 }
 
-.erp-ai-md ul,
-.erp-ai-md ol {
+#erp-ai-root .erp-ai-md ul, #erp-ai-root .erp-ai-md ol {
   margin: 0.35rem 0 0.15rem;
   padding-inline-start: 1.15rem;
 }
 
-.erp-ai-md li {
+#erp-ai-root .erp-ai-md li {
   margin: 0.28rem 0;
 }
 
-.erp-ai-md li + li {
+#erp-ai-root .erp-ai-md li + li {
   margin-top: 0.35rem;
 }
 
-.erp-ai-md table {
+#erp-ai-root .erp-ai-md table {
   width: 100%;
   border-collapse: collapse;
   margin: 0.4rem 0;
   font-size: 0.8rem;
 }
 
-.erp-ai-md th,
-.erp-ai-md td {
+#erp-ai-root .erp-ai-md th, #erp-ai-root .erp-ai-md td {
   border: 1px solid #e2e8f0;
   padding: 0.3rem 0.4rem;
   text-align: start;
   vertical-align: top;
 }
 
-.erp-ai-md th {
+#erp-ai-root .erp-ai-md th {
   background: #f8fafc;
 }
 
-.erp-ai-md p,
-.erp-ai-md ul,
-.erp-ai-md ol,
-.erp-ai-md pre {
+#erp-ai-root .erp-ai-md p, #erp-ai-root .erp-ai-md ul, #erp-ai-root .erp-ai-md ol, #erp-ai-root .erp-ai-md pre {
   margin: 0 0 0.55rem;
 }
 
-.erp-ai-md p:last-child,
-.erp-ai-md ul:last-child,
-.erp-ai-md ol:last-child,
-.erp-ai-md pre:last-child {
+#erp-ai-root .erp-ai-md p:last-child, #erp-ai-root .erp-ai-md ul:last-child, #erp-ai-root .erp-ai-md ol:last-child, #erp-ai-root .erp-ai-md pre:last-child {
   margin-bottom: 0;
 }
 
-.erp-ai-md h1,
-.erp-ai-md h2,
-.erp-ai-md h3 {
+#erp-ai-root .erp-ai-md h1, #erp-ai-root .erp-ai-md h2, #erp-ai-root .erp-ai-md h3 {
   margin: 0.35rem 0 0.4rem;
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1.35;
 }
 
-.erp-ai-md ul,
-.erp-ai-md ol {
+#erp-ai-root .erp-ai-md ul, #erp-ai-root .erp-ai-md ol {
   padding-inline-start: 1.25rem;
 }
 
-.erp-ai-md li {
+#erp-ai-root .erp-ai-md li {
   margin: 0.2rem 0;
 }
 
-.erp-ai-md li > p {
+#erp-ai-root .erp-ai-md li > p {
   margin: 0;
 }
 
-.erp-ai-md strong {
+#erp-ai-root .erp-ai-md strong {
   font-weight: 700;
 }
 
-.erp-ai-md a {
+#erp-ai-root .erp-ai-md a {
   color: #1d4ed8;
 }
 
-.erp-ai-md code {
+#erp-ai-root .erp-ai-md code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.84em;
   background: #f1f5f9;
@@ -293,7 +280,7 @@
   padding: 0.05rem 0.28rem;
 }
 
-.erp-ai-md pre {
+#erp-ai-root .erp-ai-md pre {
   background: var(--erp-ai-navy);
   color: #fff;
   border-radius: 8px;
@@ -301,13 +288,13 @@
   overflow: auto;
 }
 
-.erp-ai-md pre code {
+#erp-ai-root .erp-ai-md pre code {
   background: transparent;
   color: inherit;
   padding: 0;
 }
 
-.erp-ai-thinking {
+#erp-ai-root .erp-ai-thinking {
   margin-bottom: 0.5rem;
   border: 1px solid var(--erp-ai-border);
   border-radius: 10px;
@@ -315,7 +302,7 @@
   overflow: hidden;
 }
 
-.erp-ai-thinking summary {
+#erp-ai-root .erp-ai-thinking summary {
   cursor: pointer;
   padding: 0.45rem 0.65rem;
   font-size: 0.8rem;
@@ -323,24 +310,24 @@
   font-weight: 600;
 }
 
-.erp-ai-thinking ol {
+#erp-ai-root .erp-ai-thinking ol {
   margin: 0;
   padding: 0 0.65rem 0.65rem 1.4rem;
   font-size: 0.78rem;
   color: #334155;
 }
 
-.erp-ai-thinking li[data-status="running"] {
+#erp-ai-root .erp-ai-thinking li[data-status="running"] {
   color: var(--erp-ai-navy);
 }
 
-.erp-ai-step-detail {
+#erp-ai-root .erp-ai-step-detail {
   color: var(--erp-ai-muted);
   font-size: 0.72rem;
   line-height: 1.35;
 }
 
-.erp-ai-chart {
+#erp-ai-root .erp-ai-chart {
   margin-top: 0.5rem;
   padding: 0.65rem 0.7rem 0.5rem;
   border: 1px solid var(--erp-ai-border);
@@ -349,14 +336,14 @@
   overflow: hidden;
 }
 
-.erp-ai-chart-title {
+#erp-ai-root .erp-ai-chart-title {
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--erp-ai-navy);
   margin-bottom: 0.35rem;
 }
 
-.erp-ai-chart-kpi {
+#erp-ai-root .erp-ai-chart-kpi {
   font-size: 2rem;
   font-weight: 700;
   color: var(--erp-ai-navy);
@@ -364,20 +351,20 @@
   padding: 1rem 0;
 }
 
-.erp-ai-chart-empty {
+#erp-ai-root .erp-ai-chart-empty {
   color: var(--erp-ai-muted);
   font-size: 0.85rem;
   padding: 0.75rem 0;
   text-align: center;
 }
 
-.erp-ai-chart svg {
+#erp-ai-root .erp-ai-chart svg {
   display: block;
   max-width: 100%;
   height: auto;
 }
 
-.erp-ai-chart-legend {
+#erp-ai-root .erp-ai-chart-legend {
   list-style: none;
   margin: 0.4rem 0 0;
   padding: 0;
@@ -388,21 +375,21 @@
   color: #475569;
 }
 
-.erp-ai-chart-legend li {
+#erp-ai-root .erp-ai-chart-legend li {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
   max-width: 100%;
 }
 
-.erp-ai-chart-swatch {
+#erp-ai-root .erp-ai-chart-swatch {
   width: 0.65rem;
   height: 0.65rem;
   border-radius: 2px;
   flex-shrink: 0;
 }
 
-.erp-ai-file-link {
+#erp-ai-root .erp-ai-file-link {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -421,24 +408,24 @@
   text-align: left;
 }
 
-.erp-ai-file-title {
+#erp-ai-root .erp-ai-file-title {
   font-weight: 700;
   font-size: 0.88rem;
 }
 
-.erp-ai-file-path {
+#erp-ai-root .erp-ai-file-path {
   font-size: 0.72rem;
   color: #64748b;
   overflow-wrap: anywhere;
 }
 
-.erp-ai-file-link:hover {
+#erp-ai-root .erp-ai-file-link:hover {
   border-color: #0f1b2e;
   background: #f8fafc;
   color: #0f1b2e;
 }
 
-.erp-ai-open-link {
+#erp-ai-root .erp-ai-open-link {
   display: inline-flex;
   margin-top: 8px;
   padding: 8px 12px;
@@ -449,12 +436,12 @@
   font: 600 13px Cairo, system-ui, sans-serif;
 }
 
-.erp-ai-open-link:hover {
+#erp-ai-root .erp-ai-open-link:hover {
   background: #1a2b45;
   color: #fff;
 }
 
-.erp-ai-ack {
+#erp-ai-root .erp-ai-ack {
   border: 1px solid #fcd34d;
   background: #fffbeb;
   border-radius: 10px;
@@ -463,29 +450,29 @@
   font-size: 0.85rem;
 }
 
-.erp-ai-ack-summary {
+#erp-ai-root .erp-ai-ack-summary {
   white-space: pre-line;
   margin-top: 0.35rem;
   line-height: 1.5;
 }
 
-.erp-ai-ack-done {
+#erp-ai-root .erp-ai-ack-done {
   opacity: 0.65;
 }
 
-.erp-ai-ack button:disabled {
+#erp-ai-root .erp-ai-ack button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.erp-ai-ack label {
+#erp-ai-root .erp-ai-ack label {
   display: flex;
   gap: 0.4rem;
   align-items: flex-start;
   margin: 0.5rem 0;
 }
 
-.erp-ai-composer {
+#erp-ai-root .erp-ai-composer {
   border-top: 1px solid var(--erp-ai-border);
   padding: 0.75rem 1rem;
   display: flex;
@@ -494,7 +481,7 @@
   background: #fff;
 }
 
-.erp-ai-composer textarea {
+#erp-ai-root .erp-ai-composer textarea {
   width: 100%;
   min-height: 64px;
   resize: none;
@@ -505,21 +492,21 @@
   box-sizing: border-box;
 }
 
-.erp-ai-composer-row {
+#erp-ai-root .erp-ai-composer-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
 }
 
-.erp-ai-hint {
+#erp-ai-root .erp-ai-hint {
   flex: 1;
   font-size: 0.72rem;
   line-height: 1.4;
   color: var(--erp-ai-muted);
 }
 
-.erp-ai-attach {
+#erp-ai-root .erp-ai-attach {
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -529,14 +516,14 @@
   font-weight: 700;
 }
 
-.erp-ai-files {
+#erp-ai-root .erp-ai-files {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-bottom: 0.4rem;
 }
 
-.erp-ai-file-chip {
+#erp-ai-root .erp-ai-file-chip {
   border: 1px solid var(--erp-ai-border);
   background: #fff;
   border-radius: 999px;
@@ -544,16 +531,16 @@
   font-size: 0.72rem;
 }
 
-.erp-ai-import {
+#erp-ai-root .erp-ai-import {
   margin-top: 0.45rem;
 }
 
-.erp-ai-import button {
+#erp-ai-root .erp-ai-import button {
   margin-top: 0.25rem;
   margin-inline-end: 0.35rem;
 }
 
-.erp-ai-history-item {
+#erp-ai-root .erp-ai-history-item {
   display: block;
   width: 100%;
   text-align: start;
@@ -565,20 +552,20 @@
   cursor: pointer;
 }
 
-.erp-ai-empty {
+#erp-ai-root .erp-ai-empty {
   color: var(--erp-ai-muted);
   font-size: 0.9rem;
   padding: 1rem 0;
 }
 
-.erp-ai-cheat {
+#erp-ai-root .erp-ai-cheat {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   padding: 0.4rem 0 0.6rem;
 }
 
-.erp-ai-cheat-line {
+#erp-ai-root .erp-ai-cheat-line {
   display: block;
   width: 100%;
   text-align: start;
@@ -591,15 +578,14 @@
   color: inherit;
 }
 
-.erp-ai-memory {
+#erp-ai-root .erp-ai-memory {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.25rem 0 0.75rem;
 }
 
-.erp-ai-memory input[type="text"],
-.erp-ai-memory textarea {
+#erp-ai-root .erp-ai-memory input[type="text"], #erp-ai-root .erp-ai-memory textarea {
   width: 100%;
   border: 1px solid var(--erp-ai-border);
   border-radius: 10px;
@@ -608,7 +594,7 @@
   box-sizing: border-box;
 }
 
-.erp-ai-memory-confirm {
+#erp-ai-root .erp-ai-memory-confirm {
   display: flex;
   align-items: flex-start;
   gap: 0.4rem;
@@ -616,26 +602,26 @@
   color: #334155;
 }
 
-.erp-ai-memory-actions {
+#erp-ai-root .erp-ai-memory-actions {
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
 }
 
-.erp-ai-memory-status {
+#erp-ai-root .erp-ai-memory-status {
   min-height: 1.1rem;
   font-size: 0.8rem;
   color: var(--erp-ai-muted);
 }
 
-.erp-ai-memory-list {
+#erp-ai-root .erp-ai-memory-list {
   border-top: 1px solid var(--erp-ai-border);
   padding-top: 0.5rem;
   overflow: auto;
   max-height: 220px;
 }
 
-.erp-ai-memory-item {
+#erp-ai-root .erp-ai-memory-item {
   border: 1px solid var(--erp-ai-border);
   border-radius: 10px;
   padding: 0.45rem 0.55rem;
@@ -644,13 +630,13 @@
   font-size: 0.85rem;
 }
 
-.erp-ai-memory-item strong {
+#erp-ai-root .erp-ai-memory-item strong {
   display: block;
   margin-bottom: 0.2rem;
 }
 
 @media (max-width: 520px) {
-  .erp-ai-root {
+  #erp-ai-root {
     top: 72px;
     left: 8px;
     right: 8px;
@@ -658,7 +644,7 @@
     height: min(684px, calc(100vh - 96px));
   }
 
-  .erp-ai-root.erp-ai-expanded {
+  #erp-ai-root.erp-ai-expanded {
     top: 8px;
     height: calc(100vh - 16px);
     width: auto;

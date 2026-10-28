@@ -17,9 +17,12 @@ def run(
 	chat_id: str | None = None,
 	attachments: str | None = None,
 	file_url: str | None = None,
+	request_id: str | None = None,
 ):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
+	# Tags live thinking steps so the panel shows only this message's steps.
+	frappe.flags.erp_ai_request_id = re.sub(r"[^A-Za-z0-9_-]", "", request_id or "")[:64]
 	if not (message or "").strip() and not attachments and not file_url:
 		frappe.throw("Empty message")
 	images = _images_from_attachments(attachments)

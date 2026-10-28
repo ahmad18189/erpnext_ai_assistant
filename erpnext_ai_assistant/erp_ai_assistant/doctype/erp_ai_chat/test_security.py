@@ -96,7 +96,21 @@ class TestCardSecurity(FrappeTestCase):
 
 class TestPanelLinks(FrappeTestCase):
 	def test_model_links_only_open_this_site(self):
-		path = os.path.join(frappe.get_app_path("erpnext_ai_assistant"), "public", "js", "erpnext_ai_assistant.bundle.js")
-		source = open(path, encoding="utf-8").read()
-		self.assertIn("var origin = window.location.origin", source)
-		self.assertIn('if (url.indexOf(origin) !== 0) return label + " (" + url + ")";', source)
+		base = os.path.join(frappe.get_app_path("erpnext_ai_assistant"), "public", "js", "assistant")
+		source = open(os.path.join(base, "render.js"), encoding="utf-8").read()
+		self.assertIn('if (url.indexOf(window.location.origin + "/") !== 0) {', source)
+		self.assertIn('return document.createTextNode(label + " (" + url + ")");', source)
+
+	def test_answers_are_built_as_text_nodes(self):
+		base = os.path.join(frappe.get_app_path("erpnext_ai_assistant"), "public", "js", "assistant")
+		for name in ("render", "panel", "card", "charts", "desk_compat"):
+			source = open(os.path.join(base, f"{name}.js"), encoding="utf-8").read()
+			allowed = (
+				'innerHTML = "";',
+				"sizeBtn.innerHTML = state.expanded ? SHRINK_ICON : EXPAND_ICON; // fixed icon markup, no data",
+				"fab.innerHTML =",
+			)
+			for line in source.splitlines():
+				if ".innerHTML =" in line:
+					# Only clearing a container or setting one of the two fixed icons is allowed.
+					self.assertTrue(any(line.strip().endswith(ok) for ok in allowed), f"{name}: {line.strip()}")
