@@ -212,7 +212,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai21";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai22";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -301,7 +301,7 @@
         : branding.hint_en || t("workOnly");
 
     root.innerHTML = "";
-    root.setAttribute("dir", "rtl");
+    root.setAttribute("dir", state.lang === "ar" ? "rtl" : "ltr");
     root.setAttribute("lang", state.lang);
 
     var header = el("div", "erp-ai-header");

@@ -26,6 +26,10 @@
   color: #0f172a;
 }
 
+.erp-ai-root[dir="ltr"] {
+  direction: ltr;
+}
+
 .erp-ai-root.erp-ai-expanded {
   top: 16px;
   left: 16px;

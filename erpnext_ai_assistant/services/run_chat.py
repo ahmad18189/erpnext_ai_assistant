@@ -229,6 +229,13 @@ def run_chat(
 			answer_from_tools = prepared.get("message") or ""
 			pending = prepared.get("pending")
 			download_files = prepared.get("files") or []
+	if answer_from_tools is None and pending is None:
+		from erpnext_ai_assistant.services.charts.live import live_chart
+
+		drawn = live_chart(message, lang)
+		if drawn:
+			answer_from_tools = drawn.get("answer") or ""
+			charts = list(drawn.get("charts") or [])
 	nav = None if answer_from_tools is not None or pending else desk_link(message, lang) if intent.get("action") != "count" else None
 	if nav and nav.get("reply"):
 		answer_from_tools = nav["reply"]
