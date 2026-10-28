@@ -234,13 +234,18 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 			"action_type": action_type,
 			"target_doctype": target_doctype,
 			"target_name": target_name,
+			# Approval refuses if the record changes after this card was shown.
+			"target_modified": frappe.db.get_value(target_doctype, target_name, "modified") if target_name else None,
 			"payload_json": body,
 			"payload_hash": payload_hash(payload or {}),
 			"summary": card,
 			"status": "pending",
 		}
 	)
-	doc.insert()
+	from erpnext_ai_assistant.erp_ai_assistant.doctype.erp_ai_pending_action.erp_ai_pending_action import allow_card_insert
+
+	allow_card_insert()
+	doc.insert(ignore_permissions=True)  # users may not insert cards over REST; this server path may
 	return {
 		"pending_action": doc.name,
 		"summary": card,

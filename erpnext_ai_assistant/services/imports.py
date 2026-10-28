@@ -505,7 +505,10 @@ def propose_import(chat: str, file_url: str, doctype: str, import_type: str, lan
 			"status": "pending",
 		}
 	)
-	doc.insert()
+	from erpnext_ai_assistant.erp_ai_assistant.doctype.erp_ai_pending_action.erp_ai_pending_action import allow_card_insert
+
+	allow_card_insert()
+	doc.insert(ignore_permissions=True)  # users may not insert cards over REST; this server path may
 	return {
 		"message": summary,
 		"files": files,

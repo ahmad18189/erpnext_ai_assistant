@@ -41,7 +41,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "pending\napproved\nqueued\nstarting\nrejected\nexecuted\nfailed",
+   "options": "pending\napproved\nqueued\nstarting\nrejected\nexpired\nexecuted\nfailed",
    "default": "pending",
    "in_list_view": 1,
    "in_standard_filter": 1
@@ -73,6 +73,13 @@
    "fieldtype": "Data",
    "label": "Target Name",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "target_modified",
+   "fieldtype": "Datetime",
+   "label": "Target Modified",
+   "read_only": 1,
+   "description": "When the target record was last changed at proposal time. Approval refuses if it changed since."
   },
   {
    "fieldname": "sec_links",
@@ -195,8 +202,8 @@
   {
    "role": "All",
    "read": 1,
-   "write": 1,
-   "create": 1,
+   "write": 0,
+   "create": 0,
    "delete": 0,
    "if_owner": 1
   }
