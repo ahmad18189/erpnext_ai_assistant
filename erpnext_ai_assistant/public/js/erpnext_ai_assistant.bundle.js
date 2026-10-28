@@ -220,7 +220,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai21";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai23";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -721,7 +721,10 @@
   }
 
   function renderMarkdown(text) {
-    var lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+    text = String(text || "")
+      .replace(/\[\[\s*file:\s*\/private\/files\/[^\]|]+\s*\|[^\]]+\]\]/g, "")
+      .replace(/\[\[\s*chart:(?:bar|pie|line|kpi)\|[\s\S]*?\]\]/g, "");
+    var lines = text.replace(/\r\n/g, "\n").split("\n");
     var out = [];
     var para = [];
     var i = 0;
@@ -884,13 +887,25 @@
   function parseFileLinks(content) {
     var files = [];
     var text = String(content || "").replace(
-      /\[\[file:(\/private\/files\/[^\]|\s]+)\|([^\]]+)\]\]/g,
+      /\[\[\s*file:\s*(\/private\/files\/[^\]|\s]+)\s*\|\s*([^\]]+?)\s*\]\]/g,
       function (_m, url, label) {
         files.push({ url: url, label: label });
         return "";
       }
     );
-    return { text: text.replace(/\n+$/, "").trim(), files: files };
+    return { text: text.replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "").trim(), files: files };
+  }
+
+  function fileLinkLabel(file) {
+    var label = String((file && file.label) || "").trim();
+    var kind = label || "File";
+    if (/^(excel|csv|png|open image)$/i.test(kind) || kind === "فتح الصورة" || kind === "فتح Excel" || kind === "فتح CSV") {
+      kind = label;
+    }
+    var name = String((file && file.url) || "").split("/").pop() || "";
+    var open = state.lang === "ar" ? "فتح" : "Open";
+    if (kind === "Excel" || kind === "CSV" || kind === "PNG") return open + " " + kind;
+    return kind || open + " " + name;
   }
 
   function appendFileButtons(parent, files) {
@@ -900,11 +915,19 @@
       if (seen[file.url]) return;
       seen[file.url] = 1;
       var link = document.createElement("a");
-      link.className = "erp-ai-open-link";
+      link.className = "erp-ai-file-link";
       link.href = file.url;
       link.target = "_blank";
       link.rel = "noopener";
-      link.textContent = file.label || file.url;
+      link.setAttribute("download", "");
+      var title = document.createElement("span");
+      title.className = "erp-ai-file-title";
+      title.textContent = fileLinkLabel(file);
+      var path = document.createElement("span");
+      path.className = "erp-ai-file-path";
+      path.textContent = String(file.url).split("/").pop();
+      link.appendChild(title);
+      link.appendChild(path);
       parent.appendChild(link);
     });
   }
