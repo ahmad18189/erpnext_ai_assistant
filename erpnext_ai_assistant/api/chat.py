@@ -156,7 +156,8 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	doc = frappe.get_doc("ERP AI Pending Action", pending_action)
 	if doc.user != frappe.session.user and "System Manager" not in frappe.get_roles():
 		frappe.throw("Not your pending action", frappe.PermissionError)
-	if doc.status != "pending":
+	retry_import = doc.action_type == "import" and doc.status == "approved"
+	if doc.status != "pending" and not retry_import:
 		frappe.throw(f"Action is {doc.status}")
 	settings = frappe.get_single("ERP AI Settings")
 	# A pending card can still be approved when new chat turns are turned off.
@@ -243,9 +244,35 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 	}
 
 
-@frappe.whitelist()
+def _save_pending(doc) -> None:
+	frappe.flags.erp_ai_mutate_pending = True
+	try:
+		doc.save()
+	finally:
+		frappe.flags.erp_ai_mutate_pending = False
+
+
+def _claim_import_start(name: str) -> bool:
+	"""One caller marks the stored import as claimed. A second caller sees the same JSON and stops."""
+	current = frappe.db.get_value("ERP AI Pending Action", name, "result_json") or ""
+	try:
+		data = json.loads(current) if current else {}
+	except Exception:
+		data = {}
+	if not isinstance(data, dict) or data.get("start_claimed") or not data.get("data_import"):
+		return False
+	data["start_claimed"] = True
+	frappe.db.sql(
+		"""update `tabERP AI Pending Action`
+		set result_json=%s
+		where name=%s and status='approved' and result_json=%s""",
+		(json.dumps(data, ensure_ascii=False), name, current),
+	)
+	return int(frappe.db.sql("select row_count()")[0][0] or 0) == 1
+
+
 def _approve_import(doc, acknowledgment_text: str) -> dict:
-	"""Create one Data Import, commit, then start it. The card is already locked."""
+	"""Create one Data Import, commit it, then start it. A failed start stays retryable."""
 	from erpnext_ai_assistant.services.imports import execute_import, import_status_message
 
 	payload = json.loads(doc.payload_json) if isinstance(doc.payload_json, str) else (doc.payload_json or {})
@@ -253,27 +280,52 @@ def _approve_import(doc, acknowledgment_text: str) -> dict:
 	doc.acknowledged = 1
 	doc.resolved_by = frappe.session.user
 	doc.resolved_at = frappe.utils.now_datetime()
-	try:
-		created = execute_import(payload)
-		doc.status = "executed"
-		doc.result_json = json.dumps(created, ensure_ascii=False)
-	except Exception as exc:
-		doc.status = "failed"
-		doc.result_json = json.dumps({"error": str(exc)}, ensure_ascii=False)
-		frappe.flags.erp_ai_mutate_pending = True
+	stored = json.loads(doc.result_json) if doc.result_json else {}
+	if not isinstance(stored, dict):
+		stored = {}
+	created = stored if stored.get("data_import") else None
+	if doc.status == "pending":
 		try:
-			doc.save()
-		finally:
-			frappe.flags.erp_ai_mutate_pending = False
-		frappe.throw(str(exc))
-	frappe.flags.erp_ai_mutate_pending = True
-	try:
-		doc.save()
-	finally:
-		frappe.flags.erp_ai_mutate_pending = False
+			created = execute_import(payload)
+		except Exception as exc:
+			doc.status = "failed"
+			doc.result_json = json.dumps({"error": str(exc)}, ensure_ascii=False)
+			_save_pending(doc)
+			frappe.throw(str(exc))
+		doc.status = "approved"
+		doc.result_json = json.dumps(created, ensure_ascii=False)
+		_save_pending(doc)
+		frappe.db.commit()
+	elif not created or not created.get("data_import"):
+		frappe.throw("This import has no Data Import to resume")
+	if not _claim_import_start(doc.name):
+		current = frappe.db.get_value("ERP AI Pending Action", doc.name, "status")
+		if current == "executed":
+			report = import_status_message(created["data_import"], "en")
+			return {
+				"status": "executed",
+				"result": created,
+				"link": {"desk_route": f"/desk/data-import/{created['data_import']}", "label": created["data_import"]},
+				"message": report["message"],
+				"files": report.get("files") or [],
+			}
+		frappe.throw("Import start is already in progress")
 	frappe.db.commit()
 	data_import = frappe.get_doc("Data Import", created["data_import"])
-	started = data_import.start_import()
+	try:
+		started = data_import.start_import()
+	except Exception as exc:
+		failed = dict(created)
+		failed["start_claimed"] = False
+		failed["startup_error"] = str(exc)
+		frappe.db.set_value(
+			"ERP AI Pending Action",
+			doc.name,
+			"result_json",
+			json.dumps(failed, ensure_ascii=False),
+		)
+		frappe.db.commit()
+		frappe.throw(str(exc))
 	lang = "ar" if re.search(r"[\u0600-\u06FF]", doc.summary or "") else "en"
 	report = import_status_message(data_import.name, lang)
 	if started is False and report["status"] == "Pending" and not (data_import.template_warnings or "").strip():
@@ -292,8 +344,10 @@ def _approve_import(doc, acknowledgment_text: str) -> dict:
 				"status": "complete",
 			}
 		).insert(ignore_permissions=True)
+	frappe.db.set_value("ERP AI Pending Action", doc.name, "status", "executed")
+	frappe.db.commit()
 	return {
-		"status": doc.status,
+		"status": "executed",
 		"result": created,
 		"link": {"desk_route": desk_path("data-import", data_import.name), "label": data_import.name},
 		"message": report["message"],
@@ -301,6 +355,7 @@ def _approve_import(doc, acknowledgment_text: str) -> dict:
 	}
 
 
+@frappe.whitelist()
 def reject_action(pending_action: str, reason: str | None = None):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)

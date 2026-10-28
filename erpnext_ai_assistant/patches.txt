@@ -1,0 +1,1 @@
+erpnext_ai_assistant.patches.v1.backfill_chunk_norm
