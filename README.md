@@ -111,11 +111,11 @@ Write with your Frappe version, the question you asked, and what the assistant r
 
 ## Install
 
-Frappe v15. ERPNext, HR, and CRM are optional. Desk on this branch is `/app`.
+Frappe v15: install the `version-15` branch. ERPNext, HR, and CRM are optional. Desk on this branch is `/app`. Frappe v16 stays on `main`.
 
 ```bash
 cd /path/to/frappe-bench
-bench get-app https://github.com/ahmad18189/erpnext_ai_assistant.git
+bench get-app --branch version-15 https://github.com/ahmad18189/erpnext_ai_assistant.git
 bench --site your.site install-app erpnext_ai_assistant
 bench --site your.site migrate
 bench build --app erpnext_ai_assistant
