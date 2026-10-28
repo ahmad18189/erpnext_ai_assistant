@@ -411,7 +411,11 @@ def _detail(name: str, result: dict, lang: str) -> str:
 def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dict | None = None) -> dict | None:
 	"""Create, count, or list the DocType the Arabic (or everyday) wording actually names."""
 	from erpnext_ai_assistant.services.schema import extract_field_values
-	from erpnext_ai_assistant.services.targeting import format_count, format_query, interpret, list_fields
+	from erpnext_ai_assistant.services.targeting import (
+		format_count,
+		interpret,
+		summarize_doctype,
+	)
 
 	planned = planned or interpret(user)
 	if not planned:
@@ -456,24 +460,11 @@ def _targeted_turn(user: str, chat_id: str | None, lang: str, step, planned: dic
 			"signals": [{"kind": "had_data", "action": "count_records", "doctype": doctype}],
 		}
 	step("target", "تحديد نوع المستند", "Choose DocType", "targeting", "done", detail=f"query {doctype}", detail_ar=f"استعلام {doctype}")
-	step("tool-1", "استعلام السجلات", "Query records", "query_records", "running")
-	result = dispatch(
-		"query_records",
-		{"doctype": doctype, "fields": list_fields(doctype), "limit": 10},
-		chat_id,
-		lang,
-		user_text=user,
-	)
-	detail = _detail("query_records", result, lang)
-	step("tool-1", "استعلام السجلات", "Query records", "query_records", "done", detail=detail, detail_ar=detail)
-	if result.get("error"):
-		return {
-			"answer": str(result["error"]),
-			"pending": None,
-			"signals": _error_signal("query_records", doctype, result),
-		}
+	step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "running")
+	answer = summarize_doctype(doctype, user, lang)
+	step("tool-1", "تفاصيل السجلات", "Record details", "query_records", "done", detail=doctype, detail_ar=doctype)
 	return {
-		"answer": format_query(doctype, result.get("rows") or [], lang, capped=bool(result.get("capped"))),
+		"answer": answer,
 		"pending": None,
 		"signals": [{"kind": "had_data", "action": "query_records", "doctype": doctype}],
 	}
@@ -611,7 +602,10 @@ def run_tool_loop(
 		"You direct the tools. Call a tool before you state live data or prepare a write. "
 		"If the DocType is unclear, call list_doctypes with words from the user message, "
 		"then use only a name from that cached non-child list. Never invent a DocType. "
-		"For quantity questions (كم / عدد / how many / count) call count_records after you know the DocType. "
+		"For a pure quantity question (كم عدد / how many / count) call count_records after you know the DocType. "
+		"If the user asks for a register, table, list, or details (سجل، جدول، اعطيني، يظهر، تفاصيل), "
+		"call query_records and describe the rows in plain language, using field labels. Do not answer those with only a count. "
+		"A register that also names a person or company uses that transaction DocType, not the master list. "
 		+ manual_rule
 		+ "Use describe_doctype for the DocType the user named, not a similar one. "
 		"lookup_field and filter labels bind a fieldname only when exactly one readable hit comes back. "
