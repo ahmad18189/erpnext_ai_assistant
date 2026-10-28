@@ -12,7 +12,7 @@ import frappe
 from erpnext_ai_assistant.services.arabic import normalize_arabic
 from erpnext_ai_assistant.services.schema import DENIED_DOCTYPES
 
-CACHE_KEY = "erp_ai_doctype_catalog"
+CACHE_KEY = "erp_ai_doctype_catalog_v2"
 CACHE_TTL = 60 * 60 * 6
 
 
@@ -61,9 +61,10 @@ _EXTRA_LABELS: dict[str, tuple[str, ...]] = {
 	"Customer": ("عميل", "عملاء", "customer", "customers"),
 	"Supplier": ("مورد", "موردين", "supplier", "suppliers"),
 	"Employee": ("موظف", "موظفين", "employee", "employees"),
+	"Attendance": ("حضور", "غياب", "attendance"),
 	"Item": ("صنف", "اصناف", "item", "items"),
-	"Sales Invoice": ("فاتوره مبيعات", "sales invoice"),
-	"Purchase Invoice": ("فاتوره مشتريات", "purchase invoice"),
+	"Sales Invoice": ("فاتوره مبيعات", "فواتير المبيعات", "فواتير مبيعات", "sales invoice"),
+	"Purchase Invoice": ("فاتوره مشتريات", "فواتير المشتريات", "فواتير مشتريات", "purchase invoice"),
 	"Sales Order": ("امر بيع", "sales order"),
 	"Purchase Order": ("امر شراء", "purchase order"),
 	"CRM Lead": ("عميل محتمل", "ليد", "lead", "leads"),
