@@ -13,7 +13,7 @@ from frappe.tests.utils import FrappeTestCase
 from erpnext_ai_assistant.api.chat import _approve_import, reject_action
 from erpnext_ai_assistant.services.imports import corrected_table, preview_import, propose_import
 from erpnext_ai_assistant.services.rag.service import backfill_content_norm, retrieve
-from erpnext_ai_assistant.services.sheets import _export_value, _write_literal_row
+from erpnext_ai_assistant.services.sheets import _export_value, _save_csv, _write_literal_row
 from erpnext_ai_assistant.services.targeting import _covered_day_filters
 from erpnext_ai_assistant.services.tools.agent import NOT_VERIFIED_EN, _finish_with_evidence, run_tool_loop
 from erpnext_ai_assistant.services.writes import payload_hash
@@ -357,13 +357,16 @@ class TestReviewFixes(FrappeTestCase):
 			1,
 			[_export_value("=1+1"), _export_value("+1"), _export_value(3), _export_value("مهمة"), _export_value(" =1+1")],
 		)
+		# XLSX: a string cell is never evaluated, so the text stays exactly as stored.
 		self.assertEqual(sheet.cell(1, 1).data_type, "s")
-		self.assertTrue(str(sheet.cell(1, 1).value).startswith("'"))
+		self.assertEqual(sheet.cell(1, 1).value, "=1+1")
 		self.assertEqual(sheet.cell(1, 3).value, 3)
 		self.assertEqual(sheet.cell(1, 4).value, "مهمة")
-		buffer = io.StringIO()
-		writer = csv.writer(buffer)
-		writer.writerow([_export_value("=1+1"), _export_value("@SUM(A1)")])
-		row = next(csv.reader(io.StringIO(buffer.getvalue())))
-		self.assertTrue(row[0].startswith("'"))
-		self.assertTrue(row[1].startswith("'"))
+		saved = {}
+		with patch("erpnext_ai_assistant.services.sheets._store", side_effect=lambda name, content, label: saved.update(content=content)):
+			_save_csv("rows.csv", ["A", "B", "C", "D"], [[_export_value("=1+1"), _export_value("@SUM(A1)"), _export_value(-5), _export_value("-5")]], "en")
+		row = list(csv.reader(io.StringIO(saved["content"].decode("utf-8-sig"))))[1]
+		self.assertEqual(row[0], "'=1+1")
+		self.assertEqual(row[1], "'@SUM(A1)")
+		self.assertEqual(row[2], "-5")
+		self.assertEqual(row[3], "'-5")

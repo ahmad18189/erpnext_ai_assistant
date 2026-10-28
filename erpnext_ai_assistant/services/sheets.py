@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import io
+from decimal import Decimal
 
 import frappe
 from erpnext_ai_assistant.services.arabic import normalize_arabic
@@ -214,19 +215,22 @@ def _literal_text(value) -> str:
 	return text
 
 
+def _is_number(value) -> bool:
+	return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool)
+
+
 def _export_value(value):
-	if isinstance(value, bool):
-		return _literal_text(value)
-	if isinstance(value, (int, float)):
+	"""Numbers stay numbers. Text is guarded per format: a quote in CSV, a string cell in XLSX."""
+	if _is_number(value):
 		return value
-	return _literal_text(value)
+	return _cell(value)
 
 
 def _save_csv(filename: str, header: list[str], matrix: list[list[str]], lang: str) -> dict | None:
 	buffer = io.StringIO()
 	writer = csv.writer(buffer)
 	writer.writerow(header)
-	writer.writerows(matrix)
+	writer.writerows([value if _is_number(value) else _literal_text(value) for value in row] for row in matrix)
 	return _store(filename, buffer.getvalue().encode("utf-8-sig"), "CSV" if lang != "ar" else "فتح CSV")
 
 
@@ -258,7 +262,7 @@ def file_markers(files: list | None) -> str:
 def _write_literal_row(sheet, row_index: int, values: list) -> None:
 	for column, value in enumerate(values, start=1):
 		cell = sheet.cell(row=row_index, column=column)
-		if isinstance(value, (int, float)) and not isinstance(value, bool):
+		if _is_number(value):
 			cell.value = value
 			continue
 		text = "" if value is None else str(value)
