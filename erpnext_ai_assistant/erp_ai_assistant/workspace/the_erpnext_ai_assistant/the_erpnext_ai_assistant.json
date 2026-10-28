@@ -1,126 +1,337 @@
 {
+ "charts": [],
+ "content": "[{\"id\":\"aiHdrShortcuts\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>The ERPNext-AI-Assistant</b></span>\",\"col\":12}},{\"id\":\"aiScSettings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"ERP AI Settings\",\"col\":3}},{\"id\":\"aiScChat\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"ERP AI Chat\",\"col\":3}},{\"id\":\"aiScPending\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Pending Actions\",\"col\":3}},{\"id\":\"aiScSkill\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Skills\",\"col\":3}},{\"id\":\"aiSpacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"aiHdrCards\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Reports &amp; Masters</b></span>\",\"col\":12}},{\"id\":\"aiCardSettings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"aiCardConfig\",\"type\":\"card\",\"data\":{\"card_name\":\"Configuration\",\"col\":4}},{\"id\":\"aiCardConv\",\"type\":\"card\",\"data\":{\"card_name\":\"Conversations\",\"col\":4}},{\"id\":\"aiCardSafe\",\"type\":\"card\",\"data\":{\"card_name\":\"Safety\",\"col\":4}},{\"id\":\"aiCardKnow\",\"type\":\"card\",\"data\":{\"card_name\":\"Knowledge\",\"col\":4}},{\"id\":\"aiCardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "custom_blocks": [],
  "doctype": "Workspace",
- "name": "The ERPNext-AI-Assistant",
- "title": "The ERPNext-AI-Assistant",
- "label": "The ERPNext-AI-Assistant",
- "module": "ERP AI Assistant",
- "public": 1,
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "comment",
  "is_hidden": 0,
- "content": "[{\"id\": \"hdr1\", \"type\": \"header\", \"data\": {\"text\": \"The ERPNext-AI-Assistant / \\u0645\\u0633\\u0627\\u0639\\u062f ERPNext\", \"col\": 12}}, {\"id\": \"card_settings\", \"type\": \"card\", \"data\": {\"card_name\": \"Settings\", \"col\": 4}}, {\"id\": \"card_config\", \"type\": \"card\", \"data\": {\"card_name\": \"Configuration\", \"col\": 4}}, {\"id\": \"card_conv\", \"type\": \"card\", \"data\": {\"card_name\": \"Conversations\", \"col\": 4}}, {\"id\": \"card_safe\", \"type\": \"card\", \"data\": {\"card_name\": \"Safety\", \"col\": 4}}, {\"id\": \"card_know\", \"type\": \"card\", \"data\": {\"card_name\": \"Knowledge\", \"col\": 4}}]",
+ "indicator_color": "blue",
+ "label": "The ERPNext-AI-Assistant",
  "links": [
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Settings",
+   "link_count": 1,
+   "onboard": 0,
    "type": "Card Break"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Settings",
-   "type": "Link",
-   "link_type": "DocType",
+   "link_count": 0,
    "link_to": "ERP AI Settings",
-   "onboard": 1
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Configuration",
+   "link_count": 3,
+   "onboard": 0,
    "type": "Card Break"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Skill",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Skill",
    "link_type": "DocType",
-   "link_to": "ERP AI Skill"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Persona",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Persona",
    "link_type": "DocType",
-   "link_to": "ERP AI Persona"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Memory",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Memory",
    "link_type": "DocType",
-   "link_to": "ERP AI Memory"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Conversations",
+   "link_count": 2,
+   "onboard": 0,
    "type": "Card Break"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Chat",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Chat",
    "link_type": "DocType",
-   "link_to": "ERP AI Chat"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Message",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Message",
    "link_type": "DocType",
-   "link_to": "ERP AI Message"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Safety",
+   "link_count": 4,
+   "onboard": 0,
    "type": "Card Break"
   },
   {
-   "label": "ERP AI Abuse Event",
-   "type": "Link",
-   "link_type": "DocType",
-   "link_to": "ERP AI Abuse Event"
-  },
-  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Pending Action",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Pending Action",
    "link_type": "DocType",
-   "link_to": "ERP AI Pending Action"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "ERP AI Abuse Event",
+   "link_count": 0,
+   "link_to": "ERP AI Abuse Event",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Audit Log",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Audit Log",
    "link_type": "DocType",
-   "link_to": "ERP AI Audit Log"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "ERP AI Enhancement",
+   "link_count": 0,
+   "link_to": "ERP AI Enhancement",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Knowledge",
+   "link_count": 5,
+   "onboard": 0,
    "type": "Card Break"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Knowledge Document",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Knowledge Document",
    "link_type": "DocType",
-   "link_to": "ERP AI Knowledge Document"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Knowledge Chunk",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Knowledge Chunk",
    "link_type": "DocType",
-   "link_to": "ERP AI Knowledge Chunk"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Metadata Cache",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Metadata Cache",
    "link_type": "DocType",
-   "link_to": "ERP AI Metadata Cache"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Generated Chart",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Generated Chart",
    "link_type": "DocType",
-   "link_to": "ERP AI Generated Chart"
+   "onboard": 0,
+   "type": "Link"
   },
   {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "ERP AI Generated Query",
-   "type": "Link",
+   "link_count": 0,
+   "link_to": "ERP AI Generated Query",
    "link_type": "DocType",
-   "link_to": "ERP AI Generated Query"
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 6,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "ERP AI Chat",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "ERP AI Chats by User",
+   "link_count": 0,
+   "link_to": "ERP AI Chats by User",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "ERP AI Abuse Event",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "ERP AI Abuse Summary",
+   "link_count": 0,
+   "link_to": "ERP AI Abuse Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "ERP AI Pending Action",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "ERP AI Pending Actions",
+   "link_count": 0,
+   "link_to": "ERP AI Pending Actions",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "ERP AI Skill",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "ERP AI Skill Usage",
+   "link_count": 0,
+   "link_to": "ERP AI Skill Usage",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "ERP AI Memory",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "ERP AI Memory Overview",
+   "link_count": 0,
+   "link_to": "ERP AI Memory Overview",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "ERP AI Enhancement",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "ERP AI Enhancements by Gap",
+   "link_count": 0,
+   "link_to": "ERP AI Enhancements by Gap",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
- "icon": "message",
- "indicator_color": "blue",
- "sequence_id": 5.0,
+ "module": "ERP AI Assistant",
+ "name": "The ERPNext-AI-Assistant",
+ "number_cards": [],
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
  "roles": [
   {
    "role": "System Manager"
   }
  ],
- "type": "Workspace"
+ "sequence_id": 5.0,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "ERP AI Settings",
+   "link_to": "ERP AI Settings",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "doc_view": "List",
+   "label": "ERP AI Chat",
+   "link_to": "ERP AI Chat",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "List",
+   "label": "Pending Actions",
+   "link_to": "ERP AI Pending Action",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Skills",
+   "link_to": "ERP AI Skill",
+   "type": "DocType"
+  }
+ ],
+ "title": "The ERPNext-AI-Assistant"
 }
