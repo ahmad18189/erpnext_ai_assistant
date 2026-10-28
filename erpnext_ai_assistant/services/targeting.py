@@ -158,7 +158,8 @@ def match_doctype(text: str | None) -> str | None:
 			break
 	for word, doctype in _SYNONYMS.items():
 		if _has(norm, word) and _first_existing((doctype,)):
-			scored[doctype] = max(scored.get(doctype, 0), len(word) + 4)
+			# Clear the tie when Lead and CRM Lead share the same everyday word.
+			scored[doctype] = scored.get(doctype, 0) + len(word) + 12
 	if not scored:
 		return None
 	ranked = sorted(scored.items(), key=lambda item: (-item[1], -len(item[0])))
