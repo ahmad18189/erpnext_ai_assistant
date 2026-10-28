@@ -779,7 +779,8 @@
     if (empty) empty.remove();
     var wrap = el("div", "erp-ai-msg " + role);
     if (extra && extra.thinking) wrap.appendChild(extra.thinking);
-    var parsed = parseOpenLinks(content || "");
+    var filesInText = parseFileLinks(content || "");
+    var parsed = parseOpenLinks(filesInText.text || "");
     var bubble = el("div", "bubble");
     if (role === "assistant" && !(extra && extra.plain)) {
       bubble.classList.add("erp-ai-md");
@@ -800,19 +801,36 @@
         wrap.appendChild(renderChart(c));
       });
     }
-    if (extra && extra.files) appendFileButtons(wrap, extra.files);
+    appendFileButtons(wrap, filesInText.files.concat((extra && extra.files) || []));
     if (extra && extra.ack) wrap.appendChild(renderAck(extra.ack));
     body.appendChild(wrap);
     body.scrollTop = body.scrollHeight;
     return wrap;
   }
 
+  function parseFileLinks(content) {
+    var files = [];
+    var text = String(content || "").replace(
+      /\[\[file:(\/private\/files\/[^\]|\s]+)\|([^\]]+)\]\]/g,
+      function (_m, url, label) {
+        files.push({ url: url, label: label });
+        return "";
+      }
+    );
+    return { text: text.replace(/\n+$/, "").trim(), files: files };
+  }
+
   function appendFileButtons(parent, files) {
+    var seen = {};
     (files || []).forEach(function (file) {
       if (!file || !file.url || String(file.url).indexOf("/private/files/") !== 0) return;
+      if (seen[file.url]) return;
+      seen[file.url] = 1;
       var link = document.createElement("a");
       link.className = "erp-ai-open-link";
       link.href = file.url;
+      link.target = "_blank";
+      link.rel = "noopener";
       link.textContent = file.label || file.url;
       parent.appendChild(link);
     });

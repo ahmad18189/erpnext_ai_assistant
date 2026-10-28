@@ -254,7 +254,8 @@ def run_chat(
 				"action": intent.get("action"),
 				"values": _values(picked["doctype"], message),
 			}
-		targeted = _targeted_turn(message, chat.name, lang, step, planned=planned)
+		turn_text = _export_turn_text(message, prior_facts)
+		targeted = _targeted_turn(turn_text, chat.name, lang, step, planned=planned)
 		if targeted is not None:
 			answer_from_tools = targeted.get("answer") or ""
 			pending = targeted.get("pending")
@@ -383,6 +384,12 @@ def run_chat(
 		session_facts["chosen_doctype"] = top.get("doctype")
 		session_facts["chosen_action"] = intent.get("action") or ""
 		session_facts["chosen_app"] = top.get("app") or ""
+	if (
+		answer_from_tools
+		and intent.get("action") in ("count", "query")
+		and not _export_followup(message)
+	):
+		session_facts["last_query"] = message
 	if clarify_intent:
 		session_facts["clarify_options"] = clarify_options(clarify_intent)
 		session_facts["clarify_action"] = clarify_intent.get("action") or "unknown"
@@ -434,7 +441,13 @@ def run_chat(
 		detail_ar=f"{elapsed} مللي ثانية",
 	)
 
-	answer = _sanitize_answer(answer, lang, has_data=bool(tool_parts or charts or pending))
+	answer = _sanitize_answer(answer, lang, has_data=bool(tool_parts or charts or pending or download_files))
+	if download_files and "[[file:" not in (answer or ""):
+		from erpnext_ai_assistant.services.sheets import file_markers
+
+		markers = file_markers(download_files)
+		if markers:
+			answer = ((answer or "").rstrip() + "\n" + markers).strip()
 
 	# If a chart was produced, nudge the answer to mention it (model often denies chart ability)
 	if charts and answer and not re.search(r"chart|مخطط|رسم", answer, re.I):
@@ -511,6 +524,22 @@ def run_chat(
 		"files": download_files,
 		**_abuse_payload(abuse),
 	}
+
+
+def _export_followup(message: str) -> bool:
+	"""True when this turn only asks for a file and does not name a DocType."""
+	from erpnext_ai_assistant.services.sheets import sheet_kinds
+	from erpnext_ai_assistant.services.targeting import match_doctype
+
+	return bool(sheet_kinds(message)) and not match_doctype(message)
+
+
+def _export_turn_text(message: str, prior_facts: dict | None) -> str:
+	"""Keep the previous register's filters when the user only says 'as excel file'."""
+	previous = ((prior_facts or {}).get("last_query") or "").strip()
+	if _export_followup(message) and previous:
+		return previous + "\n" + (message or "")
+	return message
 
 
 def _wants_import_status(message: str) -> bool:
@@ -698,18 +727,32 @@ def _load_persona(settings, route: str | None = None, user: str | None = None) -
 
 def _base_system(persona: dict, memory_bits: list[str], lang: str) -> str:
 	parts = [
-		"You are a Frappe framework assistant for this site.",
-		"IN SCOPE: DocTypes and apps installed here, limited to what this user can read.",
+		"You are the Frappe assistant for this site. You answer from tools that already ran as the signed-in user.",
+		"IN SCOPE: DocTypes and apps installed here, and only rows and fields this user can read.",
 		"OUT OF SCOPE only: homework, poems, jokes, politics, generic roleplay.",
+		"HOW THIS SITE STORES WORK:",
+		"- A register (Attendance, Sales Invoice, Purchase Invoice) is the DocType to query. Employee, Customer, Supplier, Item, and User are masters. If the question names both, query the register and filter it by the master.",
+		"- An employee has a user only when Employee.user_id is set. A role (صلاحية) is a Has Role row on that User. Match the Role name exactly: CEO is not Deputy CEO.",
+		"- A leave day is Attendance status On Leave, and any date inside an approved Leave Application for that employee. Exclude those before the total.",
+		"- Cancelled, draft, and other statuses are Select options. 'Do not count' / لا تحتسب / استثني means a not-in filter on that status before you count or group.",
+		"HOW TO READ DATA:",
+		"- You have no SQL tool. Never write SQL, table names, or a database function. Filters are field, operator, and value on a DocType from list_doctypes.",
+		"- One question may need several reads. Call count_records or query_records once per DocType in the same turn, then write one answer. Do not stop after the first call.",
+		"- count_records is the total of every matching row. query_records.total is that same total. returned_count is one page. Never treat the page length as the total.",
+		"- Apply user, role, date, and status filters on the tool call. Do not fetch a page and filter it yourself.",
+		"- A permission error is the answer. Say the user cannot read that document. Do not retry as another user, do not guess the number, and do not ask for a bypass.",
+		"WHAT MAY APPEAR IN THE CHAT:",
+		"- Say names, statuses, dates, counts, and money totals the tool returned.",
+		"- Do not repeat passwords, API keys, tokens, bank account numbers, IBAN, national IDs, or salary component lines, even if a row contains them. Give the count or the sum instead.",
+		"- Do not paste tool JSON. Write plain language in the user's language.",
 		"CRITICAL ANSWER RULES:",
-		"1) Trust LIVE tool results. Never invent counts. Quantity answers come only from count_records.",
+		"1) Trust LIVE tool results. Never invent counts, names, dates, or amounts.",
 		"2) The panel renders chart payloads. Never say charts are impossible, and never invent image markdown.",
-		"3) Resolve Arabic labels with lookup_field or describe_doctype. Never invent fieldnames.",
+		"3) Resolve Arabic labels with lookup_field or describe_doctype. Never invent a fieldname or a DocType.",
 		"4) If several DocTypes match, ask which one. Use only names returned by list_doctypes.",
 		"5) Creates go through propose_write. Ask one missing field at a time. Do not guess values.",
 		"6) Follow-ups use session facts: chosen DocType, collected fields, and pending intent.",
 		"7) Never reply with only «ضمن صلاحياتك» when tool results contain data.",
-		"8) Be concrete: numbers, names, and statuses from tools only.",
 		persona.get("tone_instructions") or "",
 	]
 	if memory_bits:

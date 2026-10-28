@@ -47,7 +47,7 @@ TOOL_SPECS = [
 		"type": "function",
 		"function": {
 			"name": "query_records",
-			"description": "List records the current user can read. Filters are a JSON object of field to value. returned_count is a page, not the total.",
+			"description": "One permission-checked page plus the filtered total. Ask only for fields the answer needs. Never request password, token, bank, IBAN, national ID, or salary component fields. returned_count is the page, total is every matching row.",
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -64,7 +64,7 @@ TOOL_SPECS = [
 		"type": "function",
 		"function": {
 			"name": "count_records",
-			"description": "Return the permission-scoped total number of records for a DocType. Use this for quantity questions (how many / كم / عدد).",
+			"description": "Permission-scoped total after filters. Use for how many / كم / عدد. Pass the same user, role, date, and status filters as the list. Call once per DocType when the question needs several totals. Never invent SQL.",
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -635,30 +635,24 @@ def run_tool_loop(
 	if _erpnext_installed():
 		manual_rule = "For how-to / steps / manual questions, call search_manual and cite the returned url. "
 	rules = (
-		"You direct the tools. Call a tool before you state live data or prepare a write. "
-		"If the DocType is unclear, call list_doctypes with words from the user message, "
-		"then use only a name from that cached non-child list. Never invent a DocType. "
-		"For a pure quantity question (كم عدد / how many / count) call count_records after you know the DocType. "
-		"If the user asks for a register, table, list, or details (سجل، جدول، اعطيني، يظهر، تفاصيل), "
-		"call query_records and describe the rows in plain language, using field labels. Do not answer those with only a count. "
-		"A register that also names a person or company uses that transaction DocType, not the master list. "
-		"An employee reaches a user through user_id. A role (صلاحية) is a Has Role row on that user; match the Role name exactly, so CEO is not Deputy CEO. "
-		"Apply has-user and has-role or lacks-role before you total the rows. "
-		"Leave days (أيام الإجازة / on leave) are the On Leave status and any date inside an approved Leave Application for that employee. Exclude both before you count or group. "
-		"query_records returns one page. Its total is the filtered count of every row, from count/group, not the length of the page. "
-		"If the user says not to count a status (إجازة / leave, ملغاة / cancelled), filter that status out with not in before you count or group. "
-		"Use list_modules and lookup_field for labels. Pass module or app so the match stays in that module graph. "
+		"Call a tool before you state live data or prepare a write. "
+		"If the DocType is unclear, call list_doctypes, then use only a returned name. "
+		"A quantity (كم عدد / how many / count) is count_records with filters applied. "
+		"A register, table, or details (سجل، جدول، اعطيني، يظهر، تفاصيل) is query_records, then plain language. Use query_records.total, not returned_count. "
+		"A question about several DocTypes is several tool calls in this turn, then one answer. "
+		"Use list_modules and lookup_field before a filter label. Pass module or app. Bind a fieldname only when exactly one hit comes back. "
+		"Exclude a status with not in before the count. Exclude leave days before an attendance total. "
+		"If the tool returns a permission error, say so and stop. Do not write SQL. "
+		"Leave passwords, tokens, bank accounts, IBAN, national IDs, and salary lines out of the answer. "
+		"Never say a file is ready for download. A file link is inserted only when the export tool returns a private file. "
 		+ manual_rule
-		+ "Use describe_doctype for the DocType the user named, not a similar one. "
-		"lookup_field and filter labels bind a fieldname only when exactly one readable hit comes back. "
-		"Otherwise ask using the returned candidates. Never invent a fieldname. "
-		"propose_write does not save. If it returns missing fields, ask for the next_ask label and stop. "
-		"On a follow-up, pass every value the user already gave, plus the new one. "
-		"Do not invent field values, dates, or phone numbers. "
+		+ "Use describe_doctype for the DocType the user named. "
+		"propose_write does not save. If fields are missing, ask for the next_ask label and stop. "
+		"On a follow-up, pass every value already given, plus the new one. "
 		"مهمة is ToDo. اجتماع is Event only when the user did not ask for a مهمة. "
 		"There is no DocType named Meeting. غدا is the next calendar day. "
 		"Do not answer a create request with a menu click-path. "
-		"After tools return, answer in the language of the latest user message."
+		"After tools return, answer in the language of the latest user message. Do not paste tool JSON."
 	)
 	messages = build_messages(
 		system=system + "\n" + rules,
