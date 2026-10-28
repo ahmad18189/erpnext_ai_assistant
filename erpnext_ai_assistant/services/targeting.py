@@ -67,6 +67,14 @@ _QUERY_WORDS = (
 	"xlsx",
 	"csv",
 	"اكسل",
+	"chart",
+	"graph",
+	"مخطط",
+	"image",
+	"png",
+	"صورة",
+	"صوره",
+	"text",
 )
 _DETAIL_WORDS = (
 	"جدول",
