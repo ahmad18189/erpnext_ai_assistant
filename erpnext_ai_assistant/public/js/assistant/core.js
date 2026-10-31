@@ -171,6 +171,8 @@
     steps: [],
     thinkingMs: 0,
     expanded: false,
+    screenContext: null,
+    prompts: [],
   };
   try {
     state.expanded = sessionStorage.getItem("erp-ai-expanded") === "1";

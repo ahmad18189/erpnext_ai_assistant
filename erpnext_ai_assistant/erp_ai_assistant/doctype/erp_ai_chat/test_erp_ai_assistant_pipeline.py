@@ -17,6 +17,14 @@ class TestErpAiAssistantPipeline(FrappeTestCase):
 			from erpnext_ai_assistant.install import after_install
 
 			after_install()
+		# The abuse tests block Administrator; each test starts unblocked so order does not matter.
+		frappe.db.delete("ERP AI Abuse Event", {"user": "Administrator"})
+		settings = frappe.get_single("ERP AI Settings")
+		kept = [row for row in settings.blocked_users or [] if row.user != "Administrator"]
+		if len(kept) != len(settings.blocked_users or []):
+			settings.set("blocked_users", kept)
+			settings.save(ignore_permissions=True)
+		frappe.clear_document_cache("ERP AI Settings", "ERP AI Settings")
 
 	def test_T01_guest_cannot_chat_or_approve(self):
 		frappe.set_user("Guest")

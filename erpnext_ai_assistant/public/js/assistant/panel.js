@@ -17,8 +17,34 @@
     }
   }
 
+  function ferasDesk() {
+    // Feras Legal has its own page. The round button is the ERP assistant, so it stays off these screens.
+    var path = location.pathname || "";
+    return /\/(fl-[\w-]+|attorney-desk|hearing-calendar|office-assistant|feras-legal)(\/|$)/.test(path);
+  }
+
+  function dropOfficeBubble() {
+    state.open = false;
+    var fab = document.getElementById("erp-ai-fab");
+    if (fab) fab.remove();
+    var root = document.getElementById("erp-ai-root");
+    if (root) {
+      root.classList.add("erp-ai-closed");
+      root.innerHTML = "";
+    }
+  }
+
   function mount() {
     ensureAssets();
+    if (ferasDesk()) {
+      dropOfficeBubble();
+      if (!state.watching) {
+        state.watching = true;
+        watchDom();
+        subscribeRealtime();
+      }
+      return;
+    }
     if (!document.getElementById("erp-ai-fab")) mountFab();
     if (!document.getElementById("erp-ai-root")) {
       var root = el("div", "erp-ai-root erp-ai-closed");
@@ -50,6 +76,14 @@
       '<circle cx="16" cy="10" r="1.2" fill="currentColor"/>' +
       "</svg>";
     fab.addEventListener("click", function () {
+      if (state.screenContext) {
+        // Leaving an office chat: the round button starts a plain ERP chat, not the office thread.
+        forgetRequest();
+        state.chatId = null;
+        state.log = null;
+      }
+      state.screenContext = null;
+      state.prompts = [];
       state.open = true;
       render();
     });
@@ -59,7 +93,17 @@
   function watchDom() {
     var pending = false;
     var obs = new MutationObserver(function () {
-      if (pending || (document.getElementById("erp-ai-root") && document.getElementById("erp-ai-fab"))) return;
+      if (pending) return;
+      if (ferasDesk()) {
+        if (!document.getElementById("erp-ai-fab")) return;
+        pending = true;
+        setTimeout(function () {
+          pending = false;
+          dropOfficeBubble();
+        }, 50);
+        return;
+      }
+      if (document.getElementById("erp-ai-root") && document.getElementById("erp-ai-fab")) return;
       pending = true;
       setTimeout(function () {
         pending = false;
@@ -99,8 +143,14 @@
     fab.hidden = true;
 
     var branding = (state.boot && state.boot.branding) || {};
-    var brandMain = branding.title || t("brand");
-    var brandSub = personaLine();
+    var brandMain = officeScreen()
+      ? state.lang === "ar"
+        ? "مساعد المكتب"
+        : "Office assistant"
+      : branding.title || t("brand");
+    var brandSub = officeScreen()
+      ? (state.screenContext && (state.screenContext.title || state.screenContext.name)) || ""
+      : personaLine();
     var hint =
       state.lang === "ar"
         ? branding.hint || t("workOnly")
@@ -218,6 +268,20 @@
     body.appendChild(log);
 
     var composer = el("div", "erp-ai-composer");
+    if (state.prompts && state.prompts.length) {
+      var prompts = el("div", "erp-ai-prompts");
+      state.prompts.forEach(function (chip) {
+        var button = el("button", "erp-ai-prompt", chip.label || "");
+        button.type = "button";
+        button.addEventListener("click", function () {
+          state.draft = chip.draft || chip.label || "";
+          var input = document.getElementById("erp-ai-input");
+          if (input) input.value = state.draft;
+        });
+        prompts.appendChild(button);
+      });
+      composer.appendChild(prompts);
+    }
     if (state.files.length) {
       var chips = el("div", "erp-ai-files");
       state.files.forEach(function (file, index) {
@@ -254,7 +318,7 @@
     attach.addEventListener("click", function () {
       fileInput.click();
     });
-    row.appendChild(attach);
+    if (!officeScreen()) row.appendChild(attach);
     row.appendChild(fileInput);
     row.appendChild(textNode("div", "erp-ai-hint", hint));
     var send = el("button", "primary", t("send"));
@@ -282,7 +346,32 @@
     render();
   }
 
+  function officeScreen() {
+    if (state.screenContext && state.screenContext.doctype) return true;
+    return ferasDesk();
+  }
+
+  function mayMount() {
+    // Same checks as bootAndMaybeMount: the role allows it and this page is an overlay page.
+    var boot = state.boot;
+    return !!boot && boot.allowed !== false && pathMatches(boot.overlay_pages);
+  }
+
   function cheatLines() {
+    if (officeScreen()) {
+      if (state.lang === "ar") {
+        return [
+          { text: "اسأل عن الملف المفتوح.", example: "ما حالة هذا الملف والمحكمة؟" },
+          { text: "حدّث الخطوة التالية أو النواقص. لا يُحفظ شيء قبل موافقتك.", example: "الخطوة التالية: " },
+          { text: "لا فتوى ولا مدة. المواعيد من الجلسات المسجلة فقط.", example: "" },
+        ];
+      }
+      return [
+        { text: "Ask about the open file.", example: "What is the status and court of this file?" },
+        { text: "Update the next step. Nothing is saved until you approve.", example: "Next step: " },
+        { text: "No legal advice and no deadlines that are not already on a hearing.", example: "" },
+      ];
+    }
     var erp = state.boot && state.boot.has_erpnext;
     if (state.lang === "ar") {
       var ar = [
@@ -593,6 +682,7 @@
           request_id: state.requestId,
           attachments: JSON.stringify(images),
           file_url: tableUrl,
+          context: JSON.stringify(state.screenContext || {}),
         }).then(function (res) {
           res._reviews = reviews;
           return res;
@@ -758,6 +848,24 @@
     var path = location.pathname;
     if (path === state.lastRoute) return;
     state.lastRoute = path;
+    var ctx = state.screenContext;
+    if (ctx && ctx.name && path.indexOf(encodeURIComponent(ctx.name)) === -1 && path.indexOf(ctx.name) === -1) {
+      // The record the office chat was about is no longer on screen.
+      forgetRequest();
+      state.screenContext = null;
+      state.prompts = [];
+      state.chatId = null;
+      state.log = null;
+    }
+    if (ferasDesk()) {
+      dropOfficeBubble();
+    } else if (!document.getElementById("erp-ai-fab")) {
+      if (state.boot) {
+        if (mayMount()) mount();
+      } else {
+        bootAndMaybeMount();
+      }
+    }
     var apply = function (boot) {
       if (!boot) return;
       if (!boot._at) boot._at = Date.now();
@@ -784,6 +892,24 @@
     window.addEventListener("popstate", onRouteChange);
     setInterval(onRouteChange, 3000);
   }
+
+  A.open = function (opts) {
+    opts = opts || {};
+    if (ferasDesk()) return;
+    if (state.boot && state.boot.allowed === false) return;
+    mount();
+    // Drop the ERPNext chat and any reply still in flight. This screen must not continue it.
+    forgetRequest();
+    state.chatId = null;
+    state.log = null;
+    state.steps = [];
+    state.open = true;
+    state.tab = "chat";
+    state.screenContext = opts.context || null;
+    state.prompts = opts.chips || [];
+    state.draft = opts.draft || "";
+    render();
+  };
 
   function start() {
     var run = function () {

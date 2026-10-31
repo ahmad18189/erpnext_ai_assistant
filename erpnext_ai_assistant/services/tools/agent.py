@@ -254,6 +254,24 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 
 			args = dict(args or {})
 			args["doctype"] = canonical_doctype(args.get("doctype") or "", user_text)
+			from erpnext_ai_assistant.services.office_scope import guard_doctype
+
+			blocked = guard_doctype(args.get("doctype") or "")
+			if blocked:
+				return blocked
+		frappe.flags.erp_ai_user_text = user_text or ""
+		from erpnext_ai_assistant.services import office_scope
+
+		office = office_scope.current()
+		if office and name in ("search_knowledge", "search_manual") and not office_scope.allows("knowledge"):
+			return {"error": office_scope.refusal("knowledge"), "status": "failed"}
+		if office and name == "lookup_field":
+			blocked = office_scope.guard_doctype((args or {}).get("doctype") or "")
+			if blocked:
+				return blocked
+		if office and name == "list_doctypes":
+			allowed = set(office.get("doctypes") or [])
+			return {"doctypes": [{"name": d} for d in sorted(allowed)]}
 		if name == "describe_doctype":
 			return _compact_schema(args.get("doctype") or "")
 		if name == "query_records":
@@ -418,9 +436,14 @@ def _erpnext_installed() -> bool:
 
 
 def active_tool_specs() -> list[dict]:
-	if _erpnext_installed():
-		return TOOL_SPECS
-	return [spec for spec in TOOL_SPECS if (spec.get("function") or {}).get("name") != "search_manual"]
+	from erpnext_ai_assistant.services import office_scope
+
+	specs = TOOL_SPECS if _erpnext_installed() else [
+		spec for spec in TOOL_SPECS if (spec.get("function") or {}).get("name") != "search_manual"
+	]
+	if office_scope.current() and not office_scope.allows("knowledge"):
+		specs = [spec for spec in specs if (spec.get("function") or {}).get("name") not in ("search_knowledge", "search_manual")]
+	return specs
 
 
 def _detail(name: str, result: dict, lang: str) -> str:

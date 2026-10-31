@@ -18,6 +18,7 @@ def run(
 	attachments: str | None = None,
 	file_url: str | None = None,
 	request_id: str | None = None,
+	context: str | None = None,
 ):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
@@ -32,6 +33,7 @@ def run(
 		chat_id=chat_id,
 		images=images,
 		file_url=file_url or None,
+		context=context,
 	)
 
 

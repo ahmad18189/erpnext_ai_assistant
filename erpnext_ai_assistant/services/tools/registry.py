@@ -54,10 +54,13 @@ def tool_erp_query(
 ) -> list[dict]:
 	if not frappe.has_permission(doctype, "read"):
 		frappe.throw(f"No read permission for {doctype}", frappe.PermissionError)
+	from erpnext_ai_assistant.services import office_scope
+
+	_office_guard(doctype)
 	kwargs = {
 		"doctype": doctype,
 		"filters": filters or {},
-		"fields": fields or ["name"],
+		"fields": office_scope.clamp_fields(doctype, fields or ["name"]),
 		# Cap high enough for summaries/charts; still permission-scoped via get_list
 		"limit_page_length": min(int(limit or 20), 500),
 	}
@@ -66,25 +69,26 @@ def tool_erp_query(
 	if order_by:
 		kwargs["order_by"] = order_by
 	# CRITICAL: get_list (not get_all) — respects permissions
-	return frappe.get_list(**kwargs)
+	return office_scope.filter_rows(doctype, frappe.get_list(**kwargs))
+
+
+def _office_guard(doctype: str) -> None:
+	"""On an office screen, only that office's DocTypes are readable by any path (tools, charts, detectors)."""
+	from erpnext_ai_assistant.services.office_scope import guard_doctype
+
+	blocked = guard_doctype(doctype)
+	if blocked:
+		frappe.throw(blocked.get("error") or "Outside this office", frappe.PermissionError)
 
 
 def tool_erp_count(doctype: str, filters=None) -> dict:
-	"""Permission-scoped total. Uses DatabaseQuery, not frappe.db.count or get_all."""
+	"""Permission-scoped total. Uses get_list, not frappe.db.count or get_all."""
 	if not frappe.has_permission(doctype, "read"):
 		frappe.throw(f"No read permission for {doctype}", frappe.PermissionError)
-	from frappe.model.db_query import DatabaseQuery
+	_office_guard(doctype)
+	from erpnext_ai_assistant.services.targeting import _sql_total
 
-	rows = DatabaseQuery(doctype).execute(
-		fields=["count(name) as total"],
-		filters=filters or {},
-		ignore_permissions=False,
-		limit=None,
-	)
-	total = 0
-	if rows:
-		total = int(rows[0].get("total") or rows[0].get("count(name)") or 0)
-	return {"doctype": doctype, "total": total}
+	return {"doctype": doctype, "total": _sql_total(doctype, filters or {})}
 
 
 def tool_erp_get_doc(doctype: str, name: str) -> dict:
@@ -207,6 +211,11 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 	settings = frappe.get_single("ERP AI Settings")
 	if not settings.allow_pending_writes:
 		frappe.throw("Writes are disabled in ERP AI Settings")
+	from erpnext_ai_assistant.services.office_scope import check_write
+
+	refused = check_write(action_type, target_doctype, payload or {}, target_name)
+	if refused:
+		frappe.throw(refused)
 	from erpnext_ai_assistant.services.naming import as_title
 	from erpnext_ai_assistant.services.schema import prepare_payload
 	from erpnext_ai_assistant.services.writes import payload_hash, summary_from_payload
