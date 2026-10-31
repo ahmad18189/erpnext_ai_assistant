@@ -21,6 +21,7 @@ def run_chat(
 	chat_id: str | None = None,
 	images: list | None = None,
 	file_url: str | None = None,
+	context=None,
 ) -> dict:
 	t0 = time.time()
 	user = frappe.session.user
@@ -166,7 +167,27 @@ def run_chat(
 	from erpnext_ai_assistant.services.cheat_sheet import cheat_sheet_text, is_cheat_sheet
 
 	sheet_reply = cheat_sheet_text(lang) if is_cheat_sheet(message) else None
-	memory_bits = _load_memory(settings)
+	from erpnext_ai_assistant.services.scope import bind
+
+	scope = bind(route, context)
+	refusal = ""
+	if scope:
+		refusal = scope.preflight(message) or ""
+		if not refusal and images and scope.policy.get("attachments") is False:
+			refusal = scope.policy.get("attachment_message") or refusal
+		if not refusal and file_url and scope.policy.get("imports") is False:
+			refusal = scope.policy.get("import_message") or refusal
+	if refusal:
+		asst = _save_msg(chat.name, "assistant", refusal, "refused_scope", steps)
+		return {
+			"chat_id": chat.name,
+			"message": refusal,
+			"status": "refused_scope",
+			"message_id": asst.name,
+			"steps": steps,
+			**_abuse_payload(abuse),
+		}
+	memory_bits = [] if scope and scope.policy.get("memory") is False else _load_memory(settings)
 
 	from erpnext_ai_assistant.services import conversation as conv
 
@@ -223,7 +244,7 @@ def run_chat(
 		if status_reply:
 			answer_from_tools = status_reply.get("message") or ""
 			download_files = status_reply.get("files") or []
-	elif file_url:
+	elif file_url and not (scope and scope.policy.get("imports") is False):
 		prepared = _prepare_import_turn(message, file_url, chat.name, lang)
 		if prepared:
 			answer_from_tools = prepared.get("message") or ""
@@ -372,12 +393,16 @@ def run_chat(
 			detail=", ".join(detect_en) or "No write and no chart",
 			detail_ar=", ".join(detect_ar) or "لا إنشاء ولا مخطط",
 		)
+		from erpnext_ai_assistant.services.scope import prompt_text
+
 		skills = tools.read_skill(route=route)
 		if skills:
-			skill_blob = "\n\n".join(f"## {s.title}\n{(s.description or '')[:1800]}" for s in skills[:4])
+			skill_blob = "\n\n".join(
+				f"## {s.title}\n{prompt_text(s.description or '')[:1800]}" for s in skills[:4]
+			)
 			skill_blob = skill_blob.replace("«ضمن صلاحياتك»", "").replace("within your permissions", "")
 			tool_parts.append("Skills:\n" + skill_blob)
-		chunks = rag.retrieve(message)
+		chunks = [] if scope and scope.policy.get("knowledge") is False else rag.retrieve(message)
 		if chunks:
 			tool_parts.append("RAG:\n" + "\n---\n".join(c.get("content", "")[:500] for c in chunks))
 
@@ -421,6 +446,9 @@ def run_chat(
 
 	step("model", "كتابة الإجابة", "Writing answer", "llm", "running")
 	system = _base_system(persona, memory_bits, lang)
+	addendum = (scope.policy.get("addendum") if scope else "") or ""
+	if addendum:
+		system = system + "\n" + addendum
 	# Deterministic replies for write proposals / permission failures — don't trust the model alone
 	answer = _answer_for_pending(pending, lang)
 	if not answer and answer_from_tools:
@@ -500,9 +528,14 @@ def run_chat(
 
 	pending_name = None
 	pending_summary = None
+	pending_record = ""
 	if isinstance(pending, dict) and pending.get("pending_action"):
 		pending_name = pending.get("pending_action")
 		pending_summary = pending.get("summary") or answer
+		record_name = pending.get("record_name") or ""
+		record_title = pending.get("record_title") or ""
+		if record_name:
+			pending_record = f"{record_name} — {record_title}".strip(" —")
 
 	return {
 		"chat_id": chat.name,
@@ -513,6 +546,7 @@ def run_chat(
 		"charts": charts,
 		"pending_action": pending_name,
 		"pending_summary": pending_summary,
+		"pending_record": pending_record,
 		"persona": {
 			"name": persona.get("name") or "",
 			"panel_label": persona.get("panel_label") or "",

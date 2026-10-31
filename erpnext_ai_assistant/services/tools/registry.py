@@ -201,6 +201,11 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 	settings = frappe.get_single("ERP AI Settings")
 	if not settings.allow_pending_writes:
 		frappe.throw("Writes are disabled in ERP AI Settings")
+	from erpnext_ai_assistant.services.scope import assert_write
+
+	refused = assert_write(action_type, target_doctype, payload or {}, target_name)
+	if refused:
+		frappe.throw(refused)
 	from erpnext_ai_assistant.services.naming import as_title
 	from erpnext_ai_assistant.services.schema import prepare_payload
 	from erpnext_ai_assistant.services.writes import payload_hash, summary_from_payload
@@ -217,6 +222,11 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 		payload = prepared["payload"]
 	body = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True, default=str)
 	card = summary_from_payload(action_type, target_doctype, payload or {}, target_name)
+	context = getattr(frappe.flags, "erp_ai_context", None) or {}
+	record_name = (context.get("name") or target_name or "") if isinstance(context, dict) else (target_name or "")
+	record_title = context.get("title") or "" if isinstance(context, dict) else ""
+	if record_name:
+		card = f"{record_name} — {record_title}\n{card}".strip()
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Pending Action",
@@ -241,6 +251,8 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 		"payload_hash": doc.payload_hash,
 		"target_doctype": target_doctype,
 		"action_type": action_type,
+		"record_name": record_name,
+		"record_title": record_title,
 	}
 
 

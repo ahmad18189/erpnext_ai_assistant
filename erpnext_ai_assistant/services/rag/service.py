@@ -55,7 +55,12 @@ def reindex_knowledge():
 	for name in frappe.get_all("ERP AI Knowledge Document", filters={"source_type": "skill"}, pluck="name"):
 		_delete_document(name)
 	if frappe.db.exists("DocType", "ERP AI Skill"):
+		from erpnext_ai_assistant.services.scope import knowledge_enabled_text, prompt_text
+
 		for skill in frappe.get_all("ERP AI Skill", filters={"enabled": 1}, fields=["name", "title", "description"]):
+			if not knowledge_enabled_text(skill.description):
+				continue
+			skill.description = prompt_text(skill.description)
 			roles = frappe.get_all("ERP AI Skill Role", filters={"parent": skill.name}, pluck="role")
 			_upsert_document(
 				f"skill:{skill.name}",

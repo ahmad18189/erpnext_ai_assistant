@@ -192,6 +192,9 @@
     steps: [],
     thinkingMs: 0,
     expanded: false,
+    screenContext: null,
+    composerDraft: "",
+    prompts: [],
   };
   try {
     state.expanded = sessionStorage.getItem("erp-ai-expanded") === "1";
@@ -220,7 +223,7 @@
     if (!document.querySelector('link[data-erp-ai-css]')) {
       var link = document.createElement("link");
       link.rel = "stylesheet";
-      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai22";
+      link.href = "/assets/erpnext_ai_assistant/css/erpnext_ai_assistant.bundle.css?v=ai23";
       link.setAttribute("data-erp-ai-css", "1");
       document.head.appendChild(link);
     }
@@ -405,6 +408,21 @@
     renderCheatSheet(body);
 
     var composer = el("div", "erp-ai-composer");
+    if (state.prompts && state.prompts.length) {
+      var prompts = el("div", "erp-ai-prompts");
+      state.prompts.forEach(function (chip) {
+        var button = el("button", "erp-ai-prompt", chip.label || "");
+        button.type = "button";
+        button.addEventListener("click", function () {
+          var input = document.getElementById("erp-ai-input");
+          var draft = chip.draft || chip.label || "";
+          if (input) input.value = draft;
+          state.composerDraft = draft;
+        });
+        prompts.appendChild(button);
+      });
+      composer.appendChild(prompts);
+    }
     if (state.files.length) {
       var chips = el("div", "erp-ai-files");
       state.files.forEach(function (file, index) {
@@ -423,6 +441,10 @@
     ta.id = "erp-ai-input";
     ta.placeholder = t("placeholder");
     ta.setAttribute("dir", "auto");
+    if (state.composerDraft) ta.value = state.composerDraft;
+    ta.addEventListener("input", function () {
+      state.composerDraft = ta.value;
+    });
     var row = el("div", "erp-ai-composer-row");
     var fileInput = document.createElement("input");
     fileInput.type = "file";
@@ -441,7 +463,7 @@
     attach.addEventListener("click", function () {
       fileInput.click();
     });
-    row.appendChild(attach);
+    if (!ferasRoute()) row.appendChild(attach);
     row.appendChild(fileInput);
     row.appendChild(textNode("div", "erp-ai-hint", hint));
     var send = el("button", "primary", t("send"));
@@ -1210,9 +1232,15 @@
     return svg;
   }
 
+  function ferasRoute() {
+    var path = location.pathname || "";
+    return /\/(fl-|attorney-desk|hearing-calendar|feras-legal)/.test(path);
+  }
+
   function renderAck(pending) {
     var box = el("div", "erp-ai-ack");
     box.appendChild(textNode("strong", "", t("ackTitle")));
+    if (pending && pending.record) box.appendChild(textNode("div", "", pending.record));
     box.appendChild(textNode("div", "", (pending && pending.summary) || ""));
     var lab = el("label");
     var cb = document.createElement("input");
@@ -1302,6 +1330,7 @@
     var msg = (ta.value || "").trim();
     var files = state.files.slice();
     if (!msg && !files.length) return;
+    state.composerDraft = "";
     if (hasArabic(msg)) state.lang = "ar";
     ta.value = "";
     state.files = [];
@@ -1333,6 +1362,7 @@
           chat_id: state.chatId || "",
           attachments: JSON.stringify(images),
           file_url: tableUrl,
+          context: JSON.stringify(state.screenContext || {}),
         }).then(function (res) {
           res._reviews = reviews;
           return res;
@@ -1356,6 +1386,7 @@
             ? {
                 pending_action: res.pending_action,
                 summary: res.pending_summary || res.message || "",
+                record: res.pending_record || "",
               }
             : null,
         });
@@ -1463,6 +1494,21 @@
       });
     }, 1000);
   }
+
+  window.erpAi = {
+    open: function (opts) {
+      opts = opts || {};
+      mount();
+      state.open = true;
+      state.tab = "chat";
+      state.screenContext = opts.context || null;
+      state.prompts = opts.chips || [];
+      state.composerDraft = opts.draft || "";
+      render();
+      var ta = document.getElementById("erp-ai-input");
+      if (ta && state.composerDraft) ta.value = state.composerDraft;
+    },
+  };
 
   function start() {
     var run = function () {

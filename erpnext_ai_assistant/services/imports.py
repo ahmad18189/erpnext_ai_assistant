@@ -217,6 +217,10 @@ def import_block_reason(doctype: str) -> str:
 	"""Empty when this user may import the DocType. Otherwise a short reason."""
 	if not doctype or doctype in DENIED_DOCTYPES or doctype.startswith("ERP AI "):
 		return "blocked"
+	from erpnext_ai_assistant.services.scope import import_blocked
+
+	if import_blocked(doctype):
+		return "blocked"
 	from frappe.core.doctype.data_import.data_import import BLOCKED_DOCTYPES
 
 	if doctype in BLOCKED_DOCTYPES or not frappe.db.exists("DocType", doctype):

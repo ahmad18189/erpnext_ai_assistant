@@ -238,14 +238,24 @@ def _propose(args: dict, chat_id: str | None, lang: str) -> dict:
 
 def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: str | None = None) -> dict:
 	try:
+		frappe.flags.erp_ai_user_text = user_text or ""
+		from erpnext_ai_assistant.services.scope import clamp_fields, current, filter_catalog, filter_rows, guard_doctype
+
 		if name in ("describe_doctype", "query_records", "count_records", "propose_write"):
 			from erpnext_ai_assistant.services.targeting import canonical_doctype
 
 			args = dict(args or {})
 			args["doctype"] = canonical_doctype(args.get("doctype") or "", user_text)
 		if name == "describe_doctype":
+			blocked = guard_doctype(args.get("doctype") or "")
+			if blocked:
+				return blocked
 			return _compact_schema(args.get("doctype") or "")
 		if name == "query_records":
+			blocked = guard_doctype(args.get("doctype") or "")
+			if blocked:
+				return blocked
+			args["fields"] = clamp_fields(args.get("doctype") or "", args.get("fields") or ["name"])
 			filters = _ready_filters(args.get("doctype") or "", args.get("filters"), lang)
 			if isinstance(filters, dict) and filters.get("_error"):
 				return {"error": filters["_error"], "candidates": filters.get("_candidates") or []}
@@ -256,7 +266,7 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 				fields=args.get("fields") or ["name"],
 				limit=page_length,
 			)
-			page = rows[:page_length]
+			page = filter_rows(args.get("doctype") or "", rows[:page_length])
 			counted = tools.tool_erp_count(args.get("doctype") or "", filters=filters)
 			return {
 				"doctype": args.get("doctype"),
@@ -269,6 +279,9 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 				"rows": page,
 			}
 		if name == "count_records":
+			blocked = guard_doctype(args.get("doctype") or "")
+			if blocked:
+				return blocked
 			filters = _ready_filters(args.get("doctype") or "", args.get("filters"), lang)
 			if isinstance(filters, dict) and filters.get("_error"):
 				return {"error": filters["_error"], "candidates": filters.get("_candidates") or []}
@@ -276,13 +289,18 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 		if name == "list_doctypes":
 			from erpnext_ai_assistant.services.doctype_catalog import search_catalog
 
-			return {"doctypes": search_catalog(args.get("query"), limit=20)}
+			return {"doctypes": filter_catalog(search_catalog(args.get("query"), limit=20))}
 		if name == "list_installed_apps":
 			return {"apps": tools.tool_list_installed_apps(args.get("query"))}
 		if name == "list_modules":
 			from erpnext_ai_assistant.services.rdf.graph import list_modules
 
-			return {"modules": list_modules(args.get("app") or None)}
+			modules = list_modules(args.get("app") or None)
+			scope = current()
+			module_name = (scope.policy.get("module") if scope else "") or ""
+			if scope and module_name:
+				modules = [row for row in modules if (row.get("module") or "") == module_name]
+			return {"modules": modules}
 		if name == "lookup_field":
 			hits = tools.tool_rdf_lookup(
 				args.get("query") or "",
@@ -290,10 +308,16 @@ def dispatch(name: str, args: dict, chat_id: str | None, lang: str, user_text: s
 				module=args.get("module"),
 				app=args.get("app"),
 			)[:12]
+			scope = current()
+			if scope:
+				hits = [hit for hit in hits if (hit.get("doctype") or "") in scope.doctypes]
 			if len(hits) == 1:
 				return {"fieldname": hits[0].get("fieldname"), "doctype": hits[0].get("doctype"), "hits": hits}
 			return {"candidates": hits, "hits": hits}
 		if name == "search_knowledge":
+			scope = current()
+			if scope and scope.policy.get("knowledge") is False:
+				return {"passages": [], "note": "Knowledge search is off for this screen."}
 			from erpnext_ai_assistant.services.rag import service as rag
 
 			hits = rag.retrieve(args.get("query") or "", limit=4)

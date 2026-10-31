@@ -399,6 +399,22 @@
   margin: 0.5rem 0;
 }
 
+.erp-ai-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.erp-ai-prompt {
+  border: 1px solid var(--erp-ai-border);
+  background: #f4f7fb;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
 .erp-ai-composer {
   border-top: 1px solid var(--erp-ai-border);
   padding: 0.75rem 1rem;

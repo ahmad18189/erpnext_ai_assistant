@@ -17,6 +17,7 @@ def run(
 	chat_id: str | None = None,
 	attachments: str | None = None,
 	file_url: str | None = None,
+	context: str | None = None,
 ):
 	if frappe.session.user == "Guest":
 		frappe.throw("Login required", frappe.PermissionError)
@@ -29,6 +30,7 @@ def run(
 		chat_id=chat_id,
 		images=images,
 		file_url=file_url or None,
+		context=context,
 	)
 
 
@@ -474,6 +476,10 @@ def save_my_memory(key: str, value: str, confirmed: int | bool | str = 0):
 	value = (value or "").strip()[:500]
 	if not key or not value:
 		frappe.throw("Key and value are required")
+	from erpnext_ai_assistant.services.scope import memory_blocked_for_user
+
+	if memory_blocked_for_user():
+		frappe.throw("الذاكرة متوقفة في شاشات المكتب. امسح الذاكرة إن بقيت من شاشة أخرى.")
 	from erpnext_ai_assistant.services.naming import as_title
 
 	title = as_title("ERP AI Memory", f"{frappe.session.user}:{key}")
