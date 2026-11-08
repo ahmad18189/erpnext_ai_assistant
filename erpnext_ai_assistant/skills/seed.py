@@ -70,6 +70,26 @@ When the user asks how to do something (كيف / how to / steps / manual / docum
 """,
 	},
 	{
+		"title": "CRM day on /crm",
+		"enabled": 1,
+		"priority": 11,
+		"routes": "/crm\n/crm/leads\n/crm/deals\n/crm/tasks",
+		"doctypes": "CRM Lead, CRM Deal, CRM Task",
+		"roles": list(CRM_ROLES),
+		"description": """# CRM day on /crm
+
+On /crm, when CRM Lead exists:
+- عميل / عملائي is a CRM Lead, not an ERPNext Customer.
+- صفقة is a CRM Deal. مهمة is a CRM Task, not a ToDo. تذكير is a personal reminder.
+- «ورّيني عملائي» lists the user's own open leads.
+- A status change, a task, a reminder, and «حوّل إلى صفقة» wait for approval.
+- The approval sentence uses the person's name and Arabic words. It does not show fieldnames.
+- Conversion calls convert_to_deal. It does not insert a Deal by hand.
+- Off /crm, مهمة stays a ToDo and عميل stays a Customer.
+
+""",
+	},
+	{
 		"title": "CRM leads & deals",
 		"enabled": 1,
 		"priority": 10,

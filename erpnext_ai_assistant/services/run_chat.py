@@ -24,6 +24,7 @@ def run_chat(
 	context=None,
 ) -> dict:
 	t0 = time.time()
+	frappe.flags.erp_ai_route = route or ""
 	user = frappe.session.user
 	if user == "Guest" or not user:
 		frappe.throw("Login required", frappe.PermissionError)
@@ -252,6 +253,15 @@ def run_chat(
 	charts: list[dict] = []
 	pending = None
 	answer_from_tools = None
+	if not office:
+		from erpnext_ai_assistant.services.crm_day import handle as crm_day_handle
+
+		crm_turn = crm_day_handle(message, route, chat.name, lang)
+		if crm_turn:
+			if crm_turn.get("answer"):
+				answer_from_tools = crm_turn["answer"]
+			if crm_turn.get("pending"):
+				pending = crm_turn["pending"]
 	clarify_intent = None
 	query_text = message
 	gap_signals: list = []

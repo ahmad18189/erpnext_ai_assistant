@@ -34,6 +34,7 @@ def after_migrate():
 
 
 def _bootstrap():
+	ensure_todo_alarm_fields()
 	_ensure_settings()
 	_seed_persona()
 	_seed_framework_personas()
@@ -41,6 +42,45 @@ def _bootstrap():
 	_seed_settings_children()
 	_seed_desktop_icon()
 	_rebuild_indexes()
+
+
+def ensure_todo_alarm_fields() -> bool:
+	"""Add ToDo alarm columns once. Existing fields are never overwritten."""
+	if not frappe.db.exists("DocType", "ToDo") or not frappe.db.exists("DocType", "Custom Field"):
+		return False
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_field
+
+	specs = (
+		{
+			"fieldname": "custom_erp_ai_alarm_at",
+			"label": "Alarm At",
+			"fieldtype": "Datetime",
+			"insert_after": "date",
+		},
+		{
+			"fieldname": "custom_erp_ai_alarm_enabled",
+			"label": "Alarm Enabled",
+			"fieldtype": "Check",
+			"insert_after": "custom_erp_ai_alarm_at",
+			"default": "0",
+		},
+		{
+			"fieldname": "custom_erp_ai_alarm_fired",
+			"label": "Alarm Fired",
+			"fieldtype": "Check",
+			"insert_after": "custom_erp_ai_alarm_enabled",
+			"default": "0",
+		},
+	)
+	created = False
+	for spec in specs:
+		if frappe.db.get_value("Custom Field", {"dt": "ToDo", "fieldname": spec["fieldname"]}):
+			continue
+		create_custom_field("ToDo", dict(spec))
+		created = True
+	if created:
+		frappe.clear_cache(doctype="ToDo")
+	return created
 
 
 def _rebuild_indexes():
@@ -260,6 +300,7 @@ def seed_plan(installed: set[str] | None = None, doctypes: set[str] | None = Non
 		personas.append("ERPNext helper")
 	if "CRM Lead" in doctypes:
 		skills.append("CRM leads & deals")
+		skills.append("CRM day on /crm")
 	if "crm" in installed:
 		personas.append("CRM helper")
 	if "hrms" in installed:

@@ -54,6 +54,9 @@
       document.body.appendChild(root);
     }
     render();
+    if (!(state.boot && (state.boot.blocked || state.boot.allowed === false)) && A.startAlarmWatcher) {
+      A.startAlarmWatcher();
+    }
     if (!state.watching) {
       state.watching = true;
       watchDom();
@@ -221,6 +224,7 @@
     var bChat = el("button", state.tab === "chat" ? "active" : "", t("chat"));
     var bHist = el("button", state.tab === "history" ? "active" : "", t("history"));
     var bMem = el("button", state.tab === "memory" ? "active" : "", t("memory"));
+    var bTasks = el("button", state.tab === "tasks" ? "active" : "", t("tasks"));
     bChat.addEventListener("click", function () {
       state.tab = "chat";
       render();
@@ -235,9 +239,14 @@
       render();
       loadMemoryPanel();
     });
+    bTasks.addEventListener("click", function () {
+      state.tab = "tasks";
+      render();
+    });
     tabs.appendChild(bChat);
     tabs.appendChild(bHist);
     tabs.appendChild(bMem);
+    tabs.appendChild(bTasks);
     root.appendChild(tabs);
 
     var body = el("div", "erp-ai-body");
@@ -256,6 +265,12 @@
 
     if (state.tab === "memory") {
       renderMemoryForm(body);
+      return;
+    }
+
+    if (state.tab === "tasks") {
+      if (A.renderTasks) A.renderTasks(body);
+      else body.appendChild(el("div", "erp-ai-empty", t("loading")));
       return;
     }
 
@@ -357,6 +372,16 @@
     return !!boot && boot.allowed !== false && pathMatches(boot.overlay_pages);
   }
 
+  function crmScreen() {
+    var path = location.pathname || "";
+    return path === "/crm" || path.indexOf("/crm/") === 0;
+  }
+
+  function crmRecordKind() {
+    var match = /\/crm\/(leads|deals)\/([^/]+)/.exec(location.pathname || "");
+    return match ? match[1] : "";
+  }
+
   function cheatLines() {
     if (officeScreen()) {
       if (state.lang === "ar") {
@@ -371,6 +396,17 @@
         { text: "Update the next step. Nothing is saved until you approve.", example: "Next step: " },
         { text: "No legal advice and no deadlines that are not already on a hearing.", example: "" },
       ];
+    }
+    if (crmScreen()) {
+      var kind = crmRecordKind();
+      if (state.lang === "ar") {
+        if (kind === "deals") return [{ text: "اسأل عن هذه الصفقة", example: "ما حالة هذه الصفقة؟" }];
+        if (kind === "leads") return [{ text: "اسأل عن هذا العميل", example: "ما حالة هذا العميل؟" }];
+        return [{ text: "عملائي المحتملون", example: "ورّيني عملائي" }];
+      }
+      if (kind === "deals") return [{ text: "Ask about this deal", example: "What is the status of this deal?" }];
+      if (kind === "leads") return [{ text: "Ask about this lead", example: "What is the status of this lead?" }];
+      return [{ text: "My open leads", example: "show my open leads" }];
     }
     var erp = state.boot && state.boot.has_erpnext;
     if (state.lang === "ar") {

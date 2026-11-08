@@ -4,7 +4,7 @@
   window.__erpAiCrmInclude = 1;
 
   // Same order as PANEL_FILES in hooks.py. The version comes from this file's own URL, if the host adds one.
-  var FILES = ["core", "desk_compat", "render", "charts", "card", "panel"];
+  var FILES = ["core", "desk_compat", "render", "charts", "card", "todos", "panel"];
   var self = document.currentScript;
   var tagged = self && /[?&]v=([^&#]+)/.exec(self.src || "");
   var VER = tagged ? tagged[1] : new Date().toISOString().slice(0, 10);

@@ -1,6 +1,7 @@
 """Map Arabic and everyday words onto a real DocType.
 
-The model must not invent a DocType name such as Meeting. مهمة is ToDo.
+The model must not invent a DocType name such as Meeting. مهمة is ToDo,
+except on /crm when CRM Lead exists: there مهمة is CRM Task and عميل is a lead.
 اجتماع is Event only when the user did not ask for a task. غدا is the next
 calendar day on this site, not a guessed year.
 
@@ -130,7 +131,7 @@ _HOWTO_WORDS = (
 	"steps to",
 )
 _LIST_FIELDS = {
-	"ToDo": ["name", "description", "date", "status"],
+	"ToDo": ["name", "description", "date", "status", "custom_erp_ai_alarm_at"],
 	"Event": ["name", "subject", "starts_on", "event_category"],
 	"Customer": ["name", "customer_name", "customer_type"],
 	"CRM Lead": ["name", "lead_name", "status"],
@@ -166,7 +167,40 @@ def grouping_words(text: str | None) -> list[str]:
 	return found
 
 
-def match_doctype(text: str | None) -> str | None:
+# On /crm these raise a CRM DocType. They are boosts, not a replacement index.
+_CRM_WORD_BOOSTS = (
+	(("عميل محتمل", "عملاء محتملين", "العملاء المحتملين", "عملائي", "عملاي", "عميل", "عملاء"), "CRM Lead", 18),
+	(("صفقة", "صفقات", "الصفقات"), "CRM Deal", 22),
+	(("منشأة", "منشآت", "المنشآت", "منشاه"), "CRM Organization", 18),
+	(("تذكير", "تذكيرات"), "Yalla CRM Reminder", 22),
+)
+
+
+def crm_product_installed() -> bool:
+	"""True when CRM Lead exists and an installed app serves /crm (crm or yalla_crm)."""
+	if not _first_existing(("CRM Lead",)):
+		return False
+	try:
+		from erpnext_ai_assistant.services.apps import installed_app_routes
+
+		for row in installed_app_routes():
+			if (row.get("route") or "").rstrip("/") == "/crm":
+				return True
+	except Exception:
+		return False
+	return False
+
+
+def crm_sales_route(route: str | None = None) -> bool:
+	"""True only on /crm when this site actually has the CRM app and CRM Lead."""
+	if route is None:
+		route = frappe.flags.get("erp_ai_route") or ""
+	if not str(route or "").startswith("/crm"):
+		return False
+	return crm_product_installed()
+
+
+def match_doctype(text: str | None, route: str | None = None) -> str | None:
 	"""The DocType the user named. Returns None when the match is not clear.
 
 	The catalog and translated labels are the primary match. Phrase lists only
@@ -175,22 +209,34 @@ def match_doctype(text: str | None) -> str | None:
 	whole = without_grouping(text)
 	head = doctype_text(text)
 	if head != whole:
-		found = _match_doctype_in(head)
+		found = _match_doctype_in(head, route)
 		if found:
 			return found
-	return _match_doctype_in(whole)
+	return _match_doctype_in(whole, route)
 
 
-def _match_doctype_in(text: str) -> str | None:
+def _match_doctype_in(text: str, route: str | None = None) -> str | None:
 	norm = normalize_arabic(text)
 	if not norm:
 		return None
 	scored: dict[str, int] = {}
 	for row in match_catalog(text, limit=8):
 		scored[row["name"]] = int(row.get("score") or 0)
-	if any(_has(norm, word) for word in _TASK_WORDS):
+	arabic_task = any(_has(norm, word) for word in ("مهمه", "مهام"))
+	english_task = any(_has(norm, word) for word in ("task", "tasks"))
+	explicit_todo = any(_has(norm, word) for word in ("todo", "todos", "to-do", "to do"))
+	if crm_sales_route(route) and (arabic_task or english_task) and not explicit_todo:
+		if _can_read_doctype("CRM Task"):
+			scored["CRM Task"] = scored.get("CRM Task", 0) + 30
+	elif any(_has(norm, word) for word in _TASK_WORDS):
 		if _first_existing(("ToDo",)):
 			scored["ToDo"] = scored.get("ToDo", 0) + 30
+	if crm_sales_route(route):
+		for phrases, doctype, boost in _CRM_WORD_BOOSTS:
+			if doctype == "Yalla CRM Reminder" and not _first_existing(("Yalla CRM Reminder",)):
+				continue
+			if any(_has(norm, phrase) for phrase in phrases) and _can_read_doctype(doctype):
+				scored[doctype] = scored.get(doctype, 0) + boost
 	for phrases, names in _PHRASES:
 		for phrase in phrases:
 			if not _has(norm, phrase):
@@ -224,12 +270,21 @@ def _match_doctype_in(text: str) -> str | None:
 	return top_name
 
 
-def interpret(text: str | None) -> dict | None:
+def _can_read_doctype(doctype: str) -> bool:
+	if not _first_existing((doctype,)):
+		return False
+	try:
+		return bool(frappe.has_permission(doctype, "read") or frappe.has_permission(doctype, "create"))
+	except Exception:
+		return False
+
+
+def interpret(text: str | None, route: str | None = None) -> dict | None:
 	"""Return {doctype, action, values} only when both are clear. Else None → AI."""
 	# How-to / manual questions go to the model + search_manual, not create/count shortcuts.
 	if _is_howto(text or ""):
 		return None
-	doctype = match_doctype(text)
+	doctype = match_doctype(text, route=route)
 	if not doctype:
 		return None
 	action = _action(text or "")
@@ -297,7 +352,13 @@ def list_fields(doctype: str) -> list[str]:
 	"""List columns: a known override, otherwise title_field plus in-list fields."""
 	override = _LIST_FIELDS.get(doctype)
 	if override:
-		return list(override)
+		fields = list(override)
+		try:
+			meta = frappe.get_meta(doctype)
+			fields = [field for field in fields if field == "name" or meta.has_field(field)]
+		except Exception:
+			pass
+		return fields or ["name"]
 	try:
 		meta = frappe.get_meta(doctype)
 	except Exception:
@@ -320,6 +381,19 @@ def list_fields(doctype: str) -> list[str]:
 	return fields or ["name"]
 
 
+def _todo_alarm_ready() -> bool:
+	"""Chat can store an alarm only after the ToDo custom fields exist."""
+	try:
+		meta = frappe.get_meta("ToDo")
+	except Exception:
+		return False
+	return bool(
+		meta.has_field("custom_erp_ai_alarm_at")
+		and meta.has_field("custom_erp_ai_alarm_enabled")
+		and meta.has_field("custom_erp_ai_alarm_fired")
+	)
+
+
 def _values(doctype: str, text: str) -> dict:
 	day = _relative_day(text)
 	clock = _clock(text)
@@ -330,6 +404,9 @@ def _values(doctype: str, text: str) -> dict:
 			values["description"] = description
 		if day:
 			values["date"] = day
+		if day and clock and _todo_alarm_ready():
+			values["custom_erp_ai_alarm_at"] = f"{day} {clock}:00"
+			values["custom_erp_ai_alarm_enabled"] = 1
 		return values
 	if doctype == "Event":
 		values = {"event_category": "Meeting"}

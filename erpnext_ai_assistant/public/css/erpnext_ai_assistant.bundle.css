@@ -180,7 +180,8 @@
 
 #erp-ai-root .erp-ai-tabs {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   list-style: none;
   margin: 0;
   padding: 0.15rem 1rem 0.45rem;
@@ -715,6 +716,128 @@
 #erp-ai-root .erp-ai-memory-item strong {
   display: block;
   margin-bottom: 0.2rem;
+}
+
+#erp-ai-root .erp-ai-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding-bottom: 0.75rem;
+}
+
+#erp-ai-root .erp-ai-task-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--erp-ai-muted);
+}
+
+#erp-ai-root .erp-ai-task-form,
+#erp-ai-root .erp-ai-clock,
+#erp-ai-root .erp-ai-task {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+#erp-ai-root .erp-ai-task,
+#erp-ai-root .erp-ai-clock {
+  border: 1px solid var(--erp-ai-border);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.45rem 0.55rem;
+}
+
+#erp-ai-root .erp-ai-task-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--erp-ai-border);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  background: #fff;
+  color: inherit;
+}
+
+#erp-ai-root .erp-ai-num {
+  width: 4.2rem;
+}
+
+#erp-ai-root .erp-ai-task-times,
+#erp-ai-root .erp-ai-task-actions,
+#erp-ai-root .erp-ai-task-alarm-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+#erp-ai-root .erp-ai-task-check {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+
+#erp-ai-root .erp-ai-task-btn {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--erp-ai-border);
+  background: #fff;
+  color: #0f172a;
+  padding: 0.28rem 0.55rem;
+}
+
+#erp-ai-root .erp-ai-task-btn.primary {
+  background: var(--erp-ai-navy);
+  color: #fff;
+  border-color: var(--erp-ai-navy);
+}
+
+#erp-ai-root .erp-ai-task-title {
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+#erp-ai-root .erp-ai-task-meta,
+#erp-ai-root .erp-ai-task-status,
+#erp-ai-root .erp-ai-task-hint,
+#erp-ai-root .erp-ai-unit,
+#erp-ai-root .erp-ai-lap {
+  font-size: 0.75rem;
+  color: var(--erp-ai-muted);
+}
+
+#erp-ai-root .erp-ai-task-status {
+  min-height: 1rem;
+}
+
+#erp-ai-root .erp-ai-task-hint {
+  margin: 0;
+}
+
+#erp-ai-root .erp-ai-readout {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+#erp-ai-root .erp-ai-alarm-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+
+#erp-ai-root .erp-ai-alarm-line {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 
 @media (max-width: 520px) {

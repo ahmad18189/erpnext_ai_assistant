@@ -191,10 +191,11 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 		"submit": "submit",
 		"cancel": "cancel",
 	}
-	need = perm_map.get(action, "write")
-	allowed = frappe.has_permission(dt, need) if action == "create" else frappe.has_permission(dt, need, doc=doc.target_name)
-	if not allowed:
-		frappe.throw(f"No {need} permission for {dt}", frappe.PermissionError)
+	if action != "method":
+		need = perm_map.get(action, "write")
+		allowed = frappe.has_permission(dt, need) if action == "create" else frappe.has_permission(dt, need, doc=doc.target_name)
+		if not allowed:
+			frappe.throw(f"No {need} permission for {dt}", frappe.PermissionError)
 
 	doc.acknowledgment_text = acknowledgment_text.strip()
 	doc.acknowledged = 1
@@ -207,7 +208,9 @@ def approve_action(pending_action: str, acknowledgment_text: str, acknowledged: 
 
 	from erpnext_ai_assistant.services.schema import prepare_payload
 
-	if action == "create":
+	if action == "method":
+		_assert_method_allowed(payload)
+	elif action == "create":
 		checked = prepare_payload(dt, payload, "create", apply_defaults=False)
 		if checked["missing"] or checked["errors"]:
 			frappe.throw("Payload does not satisfy the DocType: " + "; ".join(checked["errors"]))
@@ -454,6 +457,11 @@ def bootstrap(route: str | None = None):
 		"panel_label": resolved.get("panel_label") or "Frappe helper",
 		"panel_label_ar": resolved.get("panel_label_ar") or "مساعد العمل",
 	}
+	from erpnext_ai_assistant.services.targeting import crm_product_installed
+
+	if str(route or "").startswith("/crm") and crm_product_installed():
+		persona["panel_label"] = "CRM helper"
+		persona["panel_label_ar"] = "مساعد العلاقات"
 	pages = [
 		{"path_pattern": r.path_pattern, "label": r.label, "host_hint": r.host_hint, "enabled": r.enabled}
 		for r in (settings.overlay_pages or [])
@@ -575,6 +583,8 @@ def _record_link(doctype: str, name: str) -> dict:
 
 
 def _created_message(action: str, doctype: str, result: dict) -> str:
+	if action == "method":
+		return (result or {}).get("message") or "تم."
 	link = (result or {}).get("link") or {}
 	name = (result or {}).get("name") or link.get("name") or ""
 	path = link.get("desk_route") or ""
@@ -605,7 +615,36 @@ def _e164(number: str | None, default_region: str = "SA") -> str | None:
 	return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
 
+def _assert_method_allowed(payload: dict | None) -> str:
+	from erpnext_ai_assistant.services.tools.registry import CRM_METHOD_ALLOWLIST
+
+	method = ((payload or {}).get("method") or "").strip()
+	if method not in CRM_METHOD_ALLOWLIST:
+		frappe.throw(f"Method not allowlisted: {method}", frappe.PermissionError)
+	args = (payload or {}).get("args") or {}
+	if method.endswith("convert_to_deal"):
+		lead = args.get("lead")
+		if not lead or not frappe.has_permission("CRM Lead", "write", doc=lead):
+			frappe.throw("No write permission for CRM Lead", frappe.PermissionError)
+	elif method.endswith("crm_reminder.create"):
+		if not frappe.db.exists("DocType", "Yalla CRM Reminder") or not frappe.has_permission("Yalla CRM Reminder", "create"):
+			frappe.throw("No create permission for Yalla CRM Reminder", frappe.PermissionError)
+	return method
+
+
 def _execute(action: str, doctype: str, name: str | None, payload: dict):
+	if action == "method":
+		method = _assert_method_allowed(payload)
+		out = frappe.call(method, **((payload or {}).get("args") or {}))
+		created = ""
+		if isinstance(out, dict):
+			created = out.get("name") or ""
+		elif getattr(out, "name", None):
+			created = out.name
+		return {
+			"name": created,
+			"message": (payload or {}).get("done_ar") or "تم.",
+		}
 	if action == "create":
 		payload = dict(payload or {})
 		note_text = (payload.pop("_note_text", None) or "").strip()

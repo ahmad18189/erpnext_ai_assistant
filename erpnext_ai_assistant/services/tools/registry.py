@@ -16,6 +16,13 @@ ALLOWED_RUN_METHODS = frozenset(
 		"frappe.desk.query_report.run",
 	}
 )
+# A pending card may call these after approval. Nothing else.
+CRM_METHOD_ALLOWLIST = frozenset(
+	{
+		"crm.fcrm.doctype.crm_lead.crm_lead.convert_to_deal",
+		"yalla_theme.api.crm_reminder.create",
+	}
+)
 
 NAME_HINT = re.compile(
 	r"(اسم|الاسم|lead_name|first_name|last_name|who is|find|ابحث|\bname\b)",
@@ -220,7 +227,17 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 	from erpnext_ai_assistant.services.schema import prepare_payload
 	from erpnext_ai_assistant.services.writes import payload_hash, summary_from_payload
 
-	if action_type == "create":
+	human = (summary or "").strip()
+	if action_type == "method":
+		method = (payload or {}).get("method") or ""
+		if method not in CRM_METHOD_ALLOWLIST:
+			frappe.throw(f"Method not allowlisted: {method}", frappe.PermissionError)
+		payload = {
+			"method": method,
+			"args": (payload or {}).get("args") or {},
+			"done_ar": (payload or {}).get("done_ar") or "",
+		}
+	elif action_type == "create":
 		prepared = prepare_payload(target_doctype, payload or {}, "create")
 		if prepared["missing"] or prepared["errors"]:
 			frappe.throw(
@@ -238,7 +255,7 @@ def propose_write(chat: str, action_type: str, target_doctype: str, payload: dic
 			return checked
 		target_name = checked["name"]
 	body = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True, default=str)
-	card = summary_from_payload(action_type, target_doctype, payload or {}, target_name, lang=lang)
+	card = human or summary_from_payload(action_type, target_doctype, payload or {}, target_name, lang=lang)
 	doc = frappe.get_doc(
 		{
 			"doctype": "ERP AI Pending Action",

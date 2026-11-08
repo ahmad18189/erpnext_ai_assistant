@@ -16,6 +16,14 @@ from erpnext_ai_assistant.services.schema import DENIED_DOCTYPES
 _LAYOUT = {"Section Break", "Column Break", "Tab Break", "HTML", "Button", "Fold", "Heading"}
 _LEAD_ALIASES = ("اسم", "الاسم", "الاسم الكامل", "اسم العميل", "name")
 _LEAD_FIELDS = ("lead_name", "first_name", "last_name")
+# Sales words on the same index. A boost sorts them first; other DocTypes stay in the result.
+_CRM_FIELD_ALIASES = {
+	("CRM Lead", "lead_name"): ("عميل", "عميل محتمل", "عملائي", "عملاء"),
+	("CRM Deal", "organization_name"): ("صفقة", "صفقات"),
+	("CRM Task", "title"): ("مهمة", "مهام"),
+	("CRM Organization", "organization_name"): ("منشأة", "منشآت"),
+	("Yalla CRM Reminder", "title"): ("تذكير", "تذكيرات"),
+}
 
 
 def _graph_file() -> Path:
@@ -169,6 +177,7 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None, force_ttl: bool = False
 				boosted["boost"] = 1
 				for alias in _LEAD_ALIASES:
 					_add_label(bucket, alias, boosted)
+			_apply_crm_aliases(bucket, dt, row)
 
 	fields = {key: list(rows.values()) for key, rows in bucket.items()}
 	modules, apps = _group_modules(doctype_rows)
@@ -194,6 +203,17 @@ def rebuild_rdf_graph(doctypes: list[str] | None = None, force_ttl: bool = False
 		"apps": len(apps),
 		"path": str(path),
 	}
+
+
+def _apply_crm_aliases(bucket: dict, doctype: str, row: dict) -> None:
+	"""Attach sales-language aliases to one real field. Lookup still filters by permission."""
+	aliases = _CRM_FIELD_ALIASES.get((doctype, row.get("fieldname") or ""))
+	if not aliases:
+		return
+	boosted = dict(row)
+	boosted["boost"] = 2
+	for alias in aliases:
+		_add_label(bucket, alias, boosted)
 
 
 def _structure(meta, forward: dict) -> tuple[list, list, list]:

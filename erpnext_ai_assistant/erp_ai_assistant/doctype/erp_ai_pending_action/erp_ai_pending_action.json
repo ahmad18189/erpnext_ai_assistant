@@ -55,7 +55,7 @@
    "fieldname": "action_type",
    "fieldtype": "Select",
    "label": "Action Type",
-   "options": "create\nupdate\ndelete\nsubmit\ncancel\nimport",
+   "options": "create\nupdate\ndelete\nsubmit\ncancel\nimport\nmethod",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1

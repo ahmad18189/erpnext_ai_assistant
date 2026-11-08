@@ -103,7 +103,7 @@ class TestPanelLinks(FrappeTestCase):
 
 	def test_answers_are_built_as_text_nodes(self):
 		base = os.path.join(frappe.get_app_path("erpnext_ai_assistant"), "public", "js", "assistant")
-		for name in ("render", "panel", "card", "charts", "desk_compat"):
+		for name in ("render", "panel", "card", "charts", "desk_compat", "todos"):
 			source = open(os.path.join(base, f"{name}.js"), encoding="utf-8").read()
 			allowed = ('innerHTML = "";', "fab.innerHTML =")
 			for line in source.splitlines():

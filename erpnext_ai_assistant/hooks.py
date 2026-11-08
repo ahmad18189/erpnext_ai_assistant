@@ -8,7 +8,7 @@ app_email = "ahmad18189@gmail.com"
 app_license = "MIT"
 
 # The panel is plain ordered files sharing window.erpAi (no build step). Order matters.
-PANEL_FILES = ("core", "desk_compat", "render", "charts", "card", "panel")
+PANEL_FILES = ("core", "desk_compat", "render", "charts", "card", "todos", "panel")
 
 
 def _asset_version() -> str:
